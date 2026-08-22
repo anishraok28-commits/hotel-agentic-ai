@@ -15,11 +15,34 @@ import {
   validateLateCheckoutPayload,
 } from './validate.js'
 
+const MAX_BODY_BYTES = 50 * 1024
+
+export class PayloadTooLargeError extends Error {
+  constructor() {
+    super('Request body exceeds the size limit')
+  }
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => chunks.push(chunk))
-    req.on('end', () => resolve(Buffer.concat(chunks).toString()))
+    let size = 0
+    let rejected = false
+    req.on('data', (chunk: Buffer) => {
+      if (rejected) return
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        rejected = true
+        req.pause()
+        reject(new PayloadTooLargeError())
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (rejected) return
+      resolve(Buffer.concat(chunks).toString())
+    })
     req.on('error', reject)
   })
 }
@@ -29,15 +52,29 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
-export async function handleConcierge(
-  req: IncomingMessage,
-  res: ServerResponse,
-  transport: WebhookTransport,
-): Promise<void> {
-  const raw = await readBody(req)
-  let payload: unknown
+function sendTooLarge(res: ServerResponse): void {
+  sendJson(res, 413, {
+    status: 'error',
+    requestId: 'local-validation',
+    message: 'Request body is too large',
+    code: 'INVALID_REQUEST',
+  })
+}
+
+async function readAndParse(req: IncomingMessage, res: ServerResponse): Promise<unknown | undefined> {
+  let raw: string
   try {
-    payload = JSON.parse(raw)
+    raw = await readBody(req)
+  } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      sendTooLarge(res)
+      return undefined
+    }
+    throw err
+  }
+
+  try {
+    return JSON.parse(raw)
   } catch {
     sendJson(res, 400, {
       status: 'error',
@@ -45,8 +82,17 @@ export async function handleConcierge(
       message: 'Invalid JSON body',
       code: 'INVALID_REQUEST',
     })
-    return
+    return undefined
   }
+}
+
+export async function handleConcierge(
+  req: IncomingMessage,
+  res: ServerResponse,
+  transport: WebhookTransport,
+): Promise<void> {
+  const payload = await readAndParse(req, res)
+  if (payload === undefined) return
 
   const result = validateConciergePayload(payload)
   if (!result.ok) {
@@ -79,19 +125,8 @@ export async function handleRoomService(
   res: ServerResponse,
   transport: WebhookTransport,
 ): Promise<void> {
-  const raw = await readBody(req)
-  let payload: unknown
-  try {
-    payload = JSON.parse(raw)
-  } catch {
-    sendJson(res, 400, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'Invalid JSON body',
-      code: 'INVALID_REQUEST',
-    })
-    return
-  }
+  const payload = await readAndParse(req, res)
+  if (payload === undefined) return
 
   const result = validateRoomServicePayload(payload)
   if (!result.ok) {
@@ -104,8 +139,17 @@ export async function handleRoomService(
     return
   }
 
+  // Rebuild the forwarded payload from server-side data: catalog item
+  // names/prices always win over anything the client sent, so a forged
+  // unitPrice/name can never reach Make.com or Airtable.
+  const p = payload as Record<string, unknown>
+  const sanitizedPayload = {
+    ...p,
+    items: result.items,
+  }
+
   try {
-    const webhookPayload = payload as WebhookPayload
+    const webhookPayload = sanitizedPayload as unknown as WebhookPayload
     const response = await transport.send('ROOM_SERVICE', webhookPayload)
     const statusCode = response.status === 'error' ? 502 : 202
     sendJson(res, statusCode, response)
@@ -124,19 +168,8 @@ export async function handleLateCheckout(
   res: ServerResponse,
   transport: WebhookTransport,
 ): Promise<void> {
-  const raw = await readBody(req)
-  let payload: unknown
-  try {
-    payload = JSON.parse(raw)
-  } catch {
-    sendJson(res, 400, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'Invalid JSON body',
-      code: 'INVALID_REQUEST',
-    })
-    return
-  }
+  const payload = await readAndParse(req, res)
+  if (payload === undefined) return
 
   const result = validateLateCheckoutPayload(payload)
   if (!result.ok) {

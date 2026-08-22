@@ -11,6 +11,10 @@
 export interface EnvConfig {
   readonly port: number
   readonly nodeEnv: 'local' | 'staging' | 'production'
+  readonly serviceToken: string
+  readonly rateLimitWindowSeconds: number
+  readonly rateLimitMax: number
+  readonly allowedOrigins: readonly string[]
   readonly makeBookingWebhookUrl: string
   readonly makeRoomServiceWebhookUrl: string
   readonly makeLateCheckoutWebhookUrl: string
@@ -32,6 +36,24 @@ function optionalEnv(name: string, fallback: string): string {
   return process.env[name] ?? fallback
 }
 
+function optionalIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const parsed = Number(raw)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:5173']
+
+function allowedOriginsEnv(): readonly string[] {
+  const raw = process.env.ALLOWED_ORIGINS
+  if (raw === undefined || raw === '') return DEFAULT_ALLOWED_ORIGINS
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+}
+
 export function loadEnv(): EnvConfig {
   const nodeEnvRaw = optionalEnv('ENV', 'local')
   const nodeEnv: EnvConfig['nodeEnv'] =
@@ -40,6 +62,10 @@ export function loadEnv(): EnvConfig {
   return {
     port: Number(optionalEnv('PORT', '3000')),
     nodeEnv,
+    serviceToken: requireEnv('SERVICE_TOKEN'),
+    rateLimitWindowSeconds: optionalIntEnv('RATE_LIMIT_WINDOW', 60),
+    rateLimitMax: optionalIntEnv('RATE_LIMIT_MAX', 30),
+    allowedOrigins: allowedOriginsEnv(),
     makeBookingWebhookUrl: requireEnv('MAKE_BOOKING_WEBHOOK_URL'),
     makeRoomServiceWebhookUrl: requireEnv('MAKE_ROOM_SERVICE_WEBHOOK_URL'),
     makeLateCheckoutWebhookUrl: requireEnv('MAKE_LATE_CHECKOUT_WEBHOOK_URL'),

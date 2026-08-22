@@ -149,8 +149,13 @@ export function LateCheckoutView() {
 }
 
 function buildRequestedTime(hours: number): string {
-  const checkout = new Date()
-  checkout.setHours(11, 0, 0, 0)
-  checkout.setHours(checkout.getHours() + hours)
-  return checkout.toISOString()
+  const now = new Date()
+  const requested = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 11, 0, 0, 0),
+  )
+  requested.setUTCHours(requested.getUTCHours() + hours)
+  if (requested.getTime() <= now.getTime()) {
+    requested.setUTCDate(requested.getUTCDate() + 1)
+  }
+  return requested.toISOString()
 }

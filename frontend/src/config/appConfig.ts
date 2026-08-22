@@ -25,7 +25,11 @@ function parseEnv(): AppConfig {
   }
 }
 
-/** True while making placeholder/mock calls instead of the real Backend. */
-export const MOCK_API_ENABLED = true
+/**
+ * True while making placeholder/mock calls instead of the real Backend.
+ * Controlled by VITE_MOCK_API_ENABLED; mock mode is the default unless the
+ * variable is explicitly set to "false".
+ */
+export const MOCK_API_ENABLED: boolean = import.meta.env.VITE_MOCK_API_ENABLED !== 'false'
 
 export const appConfig: AppConfig = parseEnv()

@@ -11,6 +11,10 @@ function expectError(result: unknown): WebhookErrorResponse {
 const env: EnvConfig = {
   port: 3000,
   nodeEnv: 'local',
+  serviceToken: 'test-secret',
+  rateLimitWindowSeconds: 60,
+  rateLimitMax: 30,
+  allowedOrigins: ['http://localhost:5173'],
   makeBookingWebhookUrl: 'https://hook.make.com/booking-test',
   makeRoomServiceWebhookUrl: 'https://hook.make.com/room-service-test',
   makeLateCheckoutWebhookUrl: 'https://hook.make.com/late-checkout-test',

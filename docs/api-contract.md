@@ -291,6 +291,27 @@ Ownership and exposure rules:
 | --- | --- | --- | --- |
 | `VITE_API_BASE_URL` | Yes | `https://api.example.com` | Base URL of the Backend |
 | `VITE_ENV` | Yes | `local` / `staging` / `production` | Runtime environment |
+| `VITE_MOCK_API_ENABLED` | No | `false` | `"false"` enables real Backend HTTP; unset or `"true"` keeps mock-only submissions |
+| `VITE_SERVICE_TOKEN` | Yes in staging/production | `<secret>` | Sent as `Authorization: Bearer <token>`; must match Backend `SERVICE_TOKEN` |
+
+#### Production `/api` routing
+
+The Frontend defaults `VITE_API_BASE_URL` to empty, which means same-origin
+`/api` requests. In production, the hosting layer **must** route `/api` to
+the Backend via a reverse proxy (e.g. a platform routing rule, nginx, or a
+serverless rewrite). Otherwise every submission fails with a network error.
+
+- Same-origin proxy (recommended): keep `VITE_API_BASE_URL` empty and proxy
+  `/api -> Backend`.
+- Cross-origin Backend: set `VITE_API_BASE_URL` to the absolute Backend URL
+  **and** add the Frontend origin to the Backend's `ALLOWED_ORIGINS` allowlist
+  (comma-separated). CORS is enforced as an allowlist: only listed origins
+  receive `Access-Control-Allow-Origin`, never a wildcard. Preflight `OPTIONS`
+  requests from allowed origins are answered with `204`. Origins not on the
+  allowlist receive no CORS headers.
+
+In dev, the Vite dev server already proxies `/api -> http://localhost:3000`
+(see `frontend/vite.config.ts`).
 
 ### 6.2 Backend (server-side)
 
@@ -302,6 +323,7 @@ Ownership and exposure rules:
 | `MAKE_ROOM_SERVICE_WEBHOOK_URL` | In staging/production | `https://hook.make.com/...` | Make.com webhook for **ROOM_SERVICE** |
 | `MAKE_LATE_CHECKOUT_WEBHOOK_URL` | In staging/production | `https://hook.make.com/...` | Make.com webhook for **LATE_CHECKOUT** |
 | `SERVICE_TOKEN` | Yes | `<secret>` | Shared secret used to authenticate requests |
+| `ALLOWED_ORIGINS` | No (default `http://localhost:5173`) | `http://localhost:5173` | Comma-separated list of browser origins allowed by CORS |
 | `RATE_LIMIT_WINDOW` | No (default 60) | `60` | Rate-limit window in seconds |
 | `RATE_LIMIT_MAX` | No (default 30) | `30` | Max requests per window per guest session |
 

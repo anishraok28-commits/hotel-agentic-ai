@@ -1069,6 +1069,16 @@ a:hover {
     min-width: 44px;
   }
 
+  .stepper__btn.btn--sm {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .cart-list__remove {
+    width: 44px;
+    height: 44px;
+  }
+
   .category-chip,
   .radio-card {
     min-height: 52px;

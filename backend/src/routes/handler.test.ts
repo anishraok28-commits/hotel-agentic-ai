@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it, expect, vi } from 'vitest'
-import { handleConcierge } from './handler.js'
+import { handleConcierge, handleRoomService } from './handler.js'
 import type { WebhookTransport, WebhookPayload } from '../webhook/transport.js'
 
 interface CapturedResponse {
@@ -13,6 +13,8 @@ interface CapturedResponse {
 function makeRequest(body: unknown): IncomingMessage {
   const raw = Buffer.from(JSON.stringify(body))
   const req = new EventEmitter() as unknown as IncomingMessage
+  req.destroy = () => req
+  req.pause = () => req
   queueMicrotask(() => {
     req.emit('data', raw)
     req.emit('end')
@@ -120,6 +122,8 @@ describe('handleConcierge', () => {
     const transport = transportReturning({ status: 'accepted' })
     const { res, captured } = makeResponse()
     const req = new EventEmitter() as unknown as IncomingMessage
+    req.destroy = () => req
+    req.pause = () => req
     queueMicrotask(() => {
       req.emit('data', Buffer.from('{ not json'))
       req.emit('end')
@@ -129,6 +133,25 @@ describe('handleConcierge', () => {
 
     expect(transport.send).not.toHaveBeenCalled()
     expect(captured.status).toBe(400)
+    expect(JSON.parse(captured.body)).toMatchObject({ code: 'INVALID_REQUEST' })
+  })
+
+  it('rejects an oversized body with 413 without forwarding', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+    const oversized = { ...validConciergePayload, request: 'x'.repeat(60 * 1024) }
+    const req = new EventEmitter() as unknown as IncomingMessage
+    req.destroy = () => req
+    req.pause = () => req
+    queueMicrotask(() => {
+      req.emit('data', Buffer.from(JSON.stringify(oversized)))
+      req.emit('end')
+    })
+
+    await handleConcierge(req, res, transport)
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(413)
     expect(JSON.parse(captured.body)).toMatchObject({ code: 'INVALID_REQUEST' })
   })
 
@@ -145,5 +168,88 @@ describe('handleConcierge', () => {
       status: 'error',
       code: 'AUTOMATION_FAILED',
     })
+  })
+})
+
+describe('handleRoomService', () => {
+  const validRoomServicePayload = {
+    guestId: 'guest-123',
+    sessionId: 'session-456',
+    roomNumber: 214,
+    items: [
+      { itemId: 'menu.001', name: 'Club Sandwich', quantity: 2, unitPrice: 1200 },
+    ],
+    notes: 'No onions',
+    mode: 'QR_ROOM_SERVICE',
+  }
+
+  it('replaces client-sent name and unitPrice with catalog values', async () => {
+    const transport = transportReturning({
+      status: 'accepted',
+      requestId: 'make-req-1',
+      message: 'Accepted',
+      data: { workflow: 'ROOM_SERVICE', status: 'accepted' },
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(
+      makeRequest({
+        ...validRoomServicePayload,
+        items: [
+          { itemId: 'menu.001', name: 'Forged Name', quantity: 2, unitPrice: 1 },
+        ],
+      }),
+      res,
+      transport,
+    )
+
+    expect(transport.send).toHaveBeenCalledOnce()
+    const [, forwarded] = (transport.send as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      WebhookPayload,
+    ]
+    expect(forwarded.items).toEqual([
+      { itemId: 'menu.001', name: 'Club Sandwich', quantity: 2, unitPrice: 1200 },
+    ])
+    expect(captured.status).toBe(202)
+  })
+
+  it('rejects an order containing an item with a forged unitPrice of 0', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(
+      makeRequest({
+        ...validRoomServicePayload,
+        items: [
+          { itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 0 },
+        ],
+      }),
+      res,
+      transport,
+    )
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(400)
+    expect(JSON.parse(captured.body)).toMatchObject({ code: 'MISSING_FIELD' })
+  })
+
+  it('rejects an order containing an unknown menu item', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(
+      makeRequest({
+        ...validRoomServicePayload,
+        items: [
+          { itemId: 'menu.999', name: 'Fake Item', quantity: 1, unitPrice: 100 },
+        ],
+      }),
+      res,
+      transport,
+    )
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(400)
   })
 })

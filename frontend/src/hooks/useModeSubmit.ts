@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { createGuestContext, submit } from '@/api/mockTransport'
 import { futureRouteFor } from '@/api/apiContract'
 import type {
@@ -34,26 +34,33 @@ function toError(message: string): ApiErrorResponse {
  */
 export function useModeSubmit(mode: FrontendMode) {
   const [result, setResult] = useState<SubmitResult>({ phase: 'idle' })
+  const inFlightRef = useRef(false)
 
   async function run(payload: SubmitPayload): Promise<void> {
-    const route = futureRouteFor(mode)
-    if (!route) {
-      setResult({ phase: 'error', error: toError('This mode has no API route of its own.') })
-      return
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    try {
+      const route = futureRouteFor(mode)
+      if (!route) {
+        setResult({ phase: 'error', error: toError('This mode has no API route of its own.') })
+        return
+      }
+
+      const guestContext = createGuestContext()
+      const enriched = { ...payload, ...guestContext }
+
+      setResult({ phase: 'loading' })
+      const response = await submit(route, enriched)
+
+      if (response.status === 'error') {
+        setResult({ phase: 'error', error: response })
+        return
+      }
+
+      setResult({ phase: 'success', response })
+    } finally {
+      inFlightRef.current = false
     }
-
-    const guestContext = createGuestContext()
-    const enriched = { ...payload, ...guestContext }
-
-    setResult({ phase: 'loading' })
-    const response = await submit(route, enriched)
-
-    if (response.status === 'error') {
-      setResult({ phase: 'error', error: response })
-      return
-    }
-
-    setResult({ phase: 'success', response })
   }
 
   function reset(): void {

@@ -52,7 +52,7 @@ export function AIConciergeView() {
       guestId: '',
       sessionId: '',
       roomNumber: Number(roomNumber),
-      request,
+request: request.trim(),
       mode: 'AI_CONCIERGE',
     }
     void run(payload)

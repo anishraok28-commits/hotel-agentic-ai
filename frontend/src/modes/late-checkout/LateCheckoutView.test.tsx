@@ -74,6 +74,9 @@ describe('LateCheckoutView', () => {
       roomNumber: 214,
       requestedTime: expect.any(String),
     })
+    const requested = new Date(payload.requestedTime as string)
+    expect(requested.getTime()).toBeGreaterThan(Date.now())
+    expect(payload.requestedTime).toMatch(/Z$/)
   })
 
   it('shows an error state when the submission fails', async () => {
@@ -91,5 +94,32 @@ describe('LateCheckoutView', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.getByText(/automation layer is unavailable/i)).toBeInTheDocument()
+  })
+
+  it('does not submit twice while a request is in flight', async () => {
+    let resolveSubmit: (value: unknown) => void = () => undefined
+    mocks.submit.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubmit = resolve
+        }),
+    )
+    const user = userEvent.setup()
+    renderView()
+
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '214')
+    const button = screen.getByRole('button', { name: /Request late checkout/ })
+    await user.click(button)
+    await user.click(button)
+
+    expect(mocks.submit).toHaveBeenCalledTimes(1)
+
+    resolveSubmit({
+      status: 'accepted',
+      requestId: 'stub-accepted',
+      message: 'Request mock-accepted.',
+      data: { submittedAt: '2026-08-11T00:00:00.000Z' },
+    })
+    await screen.findByRole('heading', { name: 'Late checkout requested' })
   })
 })
