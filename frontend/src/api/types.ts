@@ -54,6 +54,7 @@ export interface RoomServiceRequest {
   roomNumber: number
   items: RoomServiceItem[]
   notes?: string
+  qrToken?: string
   mode: 'QR_ROOM_SERVICE'
 }
 
@@ -63,5 +64,6 @@ export interface LateCheckoutRequest {
   sessionId: string
   roomNumber: number
   requestedTime: string
+  qrToken?: string
   mode: 'LATE_CHECKOUT'
 }

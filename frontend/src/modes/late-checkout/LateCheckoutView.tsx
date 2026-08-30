@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -16,7 +17,10 @@ import type { LateCheckoutRequest } from '@/api/types'
 export function LateCheckoutView() {
   const mode = MODES.LATE_CHECKOUT
   const { result, run, reset } = useModeSubmit(mode.id)
-  const [roomNumber, setRoomNumber] = useState('')
+  const [searchParams] = useSearchParams()
+  const qrToken = searchParams.get('token') ?? ''
+  const roomFromQr = searchParams.get('room') ?? ''
+  const [roomNumber, setRoomNumber] = useState(roomFromQr)
   const [hours, setHours] = useState<number>(2)
 
   const selected = LATE_CHECKOUT_OPTIONS.find((o) => o.hours === hours) ?? LATE_CHECKOUT_OPTIONS[0]
@@ -28,6 +32,7 @@ export function LateCheckoutView() {
       sessionId: '',
       roomNumber: Number(roomNumber),
       requestedTime: buildRequestedTime(hours),
+      qrToken: qrToken || undefined,
       mode: 'LATE_CHECKOUT',
     }
     void run(payload)

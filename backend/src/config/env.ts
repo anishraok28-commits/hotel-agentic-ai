@@ -18,6 +18,8 @@ export interface EnvConfig {
   readonly makeBookingWebhookUrl: string
   readonly makeRoomServiceWebhookUrl: string
   readonly makeLateCheckoutWebhookUrl: string
+  readonly qrTokenSecret: string
+  readonly sessionTtlHours: number
 }
 
 function requireEnv(name: string): string {
@@ -69,5 +71,7 @@ export function loadEnv(): EnvConfig {
     makeBookingWebhookUrl: requireEnv('MAKE_BOOKING_WEBHOOK_URL'),
     makeRoomServiceWebhookUrl: requireEnv('MAKE_ROOM_SERVICE_WEBHOOK_URL'),
     makeLateCheckoutWebhookUrl: requireEnv('MAKE_LATE_CHECKOUT_WEBHOOK_URL'),
+    qrTokenSecret: optionalEnv('QR_TOKEN_SECRET', 'dev-qr-secret-do-not-use-in-production'),
+    sessionTtlHours: optionalIntEnv('SESSION_TTL_HOURS', 24),
   }
 }

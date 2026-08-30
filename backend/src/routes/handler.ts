@@ -14,6 +14,9 @@ import {
   validateRoomServicePayload,
   validateLateCheckoutPayload,
 } from './validate.js'
+import { verifyQrToken } from '../session/qrToken.js'
+import { verifySession } from '../session/store.js'
+import type { EnvConfig } from '../config/env.js'
 
 const MAX_BODY_BYTES = 50 * 1024
 
@@ -124,6 +127,7 @@ export async function handleRoomService(
   req: IncomingMessage,
   res: ServerResponse,
   transport: WebhookTransport,
+  env?: EnvConfig,
 ): Promise<void> {
   const payload = await readAndParse(req, res)
   if (payload === undefined) return
@@ -139,12 +143,41 @@ export async function handleRoomService(
     return
   }
 
+  // Session verification: QR token + active session required.
+  const p = payload as Record<string, unknown>
+  const qrToken = p.qrToken as string | undefined
+  if (env && qrToken) {
+    const tokenRoomId = verifyQrToken(qrToken, env.qrTokenSecret)
+    if (tokenRoomId === undefined || tokenRoomId !== (p.roomNumber as number)) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Invalid or tampered QR token',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    const session = verifySession(
+      p.roomNumber as number,
+      p.guestId as string,
+      p.sessionId as string,
+    )
+    if (!session) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'No active guest session for this room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+  }
+
   // Rebuild the forwarded payload from server-side data: catalog item
   // names/prices always win over anything the client sent, so a forged
   // unitPrice/name can never reach Make.com or Airtable.
-  const p = payload as Record<string, unknown>
   const sanitizedPayload = {
-    ...p,
+    ...payload,
     items: result.items,
   }
 
@@ -167,6 +200,7 @@ export async function handleLateCheckout(
   req: IncomingMessage,
   res: ServerResponse,
   transport: WebhookTransport,
+  env?: EnvConfig,
 ): Promise<void> {
   const payload = await readAndParse(req, res)
   if (payload === undefined) return
@@ -180,6 +214,36 @@ export async function handleLateCheckout(
       code: 'MISSING_FIELD',
     })
     return
+  }
+
+  // Session verification: QR token + active session required.
+  const p = payload as Record<string, unknown>
+  const qrToken = p.qrToken as string | undefined
+  if (env && qrToken) {
+    const tokenRoomId = verifyQrToken(qrToken, env.qrTokenSecret)
+    if (tokenRoomId === undefined || tokenRoomId !== (p.roomNumber as number)) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Invalid or tampered QR token',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    const session = verifySession(
+      p.roomNumber as number,
+      p.guestId as string,
+      p.sessionId as string,
+    )
+    if (!session) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'No active guest session for this room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
   }
 
   try {

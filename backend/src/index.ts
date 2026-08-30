@@ -12,6 +12,8 @@ import { handleConcierge, handleRoomService, handleLateCheckout } from './routes
 import { createRealTransport } from './webhook/realTransport.js'
 import { isAuthorized } from './middleware/auth.js'
 import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
+import { generateQrToken, verifyQrToken } from './session/qrToken.js'
+import { checkIn, getSession } from './session/store.js'
 import type { EnvConfig } from './config/env.js'
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -92,6 +94,24 @@ function authorizePost(
   return true
 }
 
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > 4096) {
+        req.pause()
+        reject(new Error('too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString()))
+    req.on('error', reject)
+  })
+}
+
 function route(
   req: IncomingMessage,
   res: ServerResponse,
@@ -123,15 +143,28 @@ function route(
 
   if (method === 'POST' && url === '/api/room-service') {
     if (authorizePost(req, res, env, limiter)) {
-      void handleRoomService(req, res, transport)
+      void handleRoomService(req, res, transport, env)
     }
     return
   }
 
   if (method === 'POST' && url === '/api/late-checkout') {
     if (authorizePost(req, res, env, limiter)) {
-      void handleLateCheckout(req, res, transport)
+      void handleLateCheckout(req, res, transport, env)
     }
+    return
+  }
+
+  // Session management routes (admin / front-desk use, still Bearer-protected)
+  if (method === 'POST' && url === '/api/session/check-in') {
+    if (!authorizePost(req, res, env, limiter)) return
+    void handleCheckIn(req, res, env)
+    return
+  }
+
+  if (method === 'POST' && url === '/api/session/verify') {
+    if (!authorizePost(req, res, env, limiter)) return
+    void handleVerifySession(req, res, env)
     return
   }
 
@@ -140,6 +173,120 @@ function route(
     requestId: crypto.randomUUID(),
     message: 'Route not found',
     code: 'NOT_FOUND',
+  })
+}
+
+async function handleCheckIn(
+  req: IncomingMessage,
+  res: ServerResponse,
+  env: EnvConfig,
+): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const raw = await readBody(req)
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid JSON body',
+      code: 'INVALID_REQUEST',
+    })
+    return
+  }
+
+  const roomId = body.roomNumber as number | undefined
+  const guestId = body.guestId as string | undefined
+  const sessionId = body.sessionId as string | undefined
+
+  if (
+    typeof roomId !== 'number' || !Number.isInteger(roomId) || roomId < 1 || roomId > 9999 ||
+    typeof guestId !== 'string' || guestId.trim() === '' ||
+    typeof sessionId !== 'string' || sessionId.trim() === ''
+  ) {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Validation failed: roomNumber, guestId, sessionId required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+  checkIn(roomId, guestId, sessionId, ttlMs)
+  const qrToken = generateQrToken(roomId, env.qrTokenSecret)
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Guest checked in',
+    data: { roomId, guestId, sessionId, qrToken },
+  })
+}
+
+async function handleVerifySession(
+  req: IncomingMessage,
+  res: ServerResponse,
+  env: EnvConfig,
+): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const raw = await readBody(req)
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid JSON body',
+      code: 'INVALID_REQUEST',
+    })
+    return
+  }
+
+  const qrToken = body.qrToken as string | undefined
+  if (typeof qrToken !== 'string' || qrToken.trim() === '') {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'qrToken required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  const roomId = verifyQrToken(qrToken, env.qrTokenSecret)
+  if (roomId === undefined) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid or tampered QR token',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
+  const session = getSession(roomId)
+  if (!session) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'No active guest session for this room',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Session valid',
+    data: {
+      roomId: session.roomId,
+      guestId: session.guestId,
+      sessionId: session.sessionId,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+    },
   })
 }
 

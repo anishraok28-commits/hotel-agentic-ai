@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it, expect, vi } from 'vitest'
-import { handleConcierge, handleRoomService } from './handler.js'
+import { handleConcierge, handleRoomService, handleLateCheckout } from './handler.js'
 import type { WebhookTransport, WebhookPayload } from '../webhook/transport.js'
 
 interface CapturedResponse {
@@ -251,5 +251,138 @@ describe('handleRoomService', () => {
 
     expect(transport.send).not.toHaveBeenCalled()
     expect(captured.status).toBe(400)
+  })
+})
+
+describe('handleLateCheckout', () => {
+  const validLateCheckoutPayload = {
+    guestId: 'guest-123',
+    sessionId: 'session-456',
+    roomNumber: 214,
+    requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    mode: 'LATE_CHECKOUT',
+  }
+
+  it('forwards the payload to the LATE_CHECKOUT workflow', async () => {
+    const transport = transportReturning({
+      status: 'accepted',
+      requestId: 'make-req-lc-1',
+      message: 'Accepted',
+      data: { workflow: 'LATE_CHECKOUT', status: 'accepted' },
+    })
+    const { res, captured } = makeResponse()
+
+    await handleLateCheckout(makeRequest(validLateCheckoutPayload), res, transport)
+
+    expect(transport.send).toHaveBeenCalledOnce()
+    expect(transport.send).toHaveBeenCalledWith(
+      'LATE_CHECKOUT',
+      validLateCheckoutPayload as WebhookPayload,
+    )
+    expect(captured.status).toBe(202)
+    expect(JSON.parse(captured.body)).toMatchObject({
+      status: 'accepted',
+      requestId: 'make-req-lc-1',
+      message: 'Accepted',
+    })
+  })
+
+  it('maps a Make.com failure to HTTP 502 AUTOMATION_FAILED', async () => {
+    const transport = transportReturning({
+      status: 'error',
+      requestId: 'make-req-lc-err',
+      message: 'Make.com webhook timed out',
+      code: 'AUTOMATION_FAILED',
+    })
+    const { res, captured } = makeResponse()
+
+    await handleLateCheckout(makeRequest(validLateCheckoutPayload), res, transport)
+
+    expect(transport.send).toHaveBeenCalledWith(
+      'LATE_CHECKOUT',
+      validLateCheckoutPayload as WebhookPayload,
+    )
+    expect(captured.status).toBe(502)
+    expect(JSON.parse(captured.body)).toMatchObject({
+      status: 'error',
+      code: 'AUTOMATION_FAILED',
+    })
+  })
+
+  it('rejects a payload with a non-LATE_CHECKOUT mode without forwarding', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+
+    await handleLateCheckout(
+      makeRequest({ ...validLateCheckoutPayload, mode: 'AI_CONCIERGE' }),
+      res,
+      transport,
+    )
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(400)
+    expect(JSON.parse(captured.body)).toMatchObject({ code: 'MISSING_FIELD' })
+  })
+
+  it('rejects a missing requestedTime field without forwarding', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+    const { requestedTime: _t, ...missingTime } = validLateCheckoutPayload
+    void _t
+
+    await handleLateCheckout(makeRequest(missingTime), res, transport)
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(400)
+    expect(JSON.parse(captured.body)).toMatchObject({ code: 'MISSING_FIELD' })
+  })
+
+  it('rejects a past requestedTime without forwarding', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+    const pastTime = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+
+    await handleLateCheckout(
+      makeRequest({ ...validLateCheckoutPayload, requestedTime: pastTime }),
+      res,
+      transport,
+    )
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(400)
+    expect(JSON.parse(captured.body)).toMatchObject({ code: 'MISSING_FIELD' })
+  })
+
+  it('rejects malformed JSON without forwarding', async () => {
+    const transport = transportReturning({ status: 'accepted' })
+    const { res, captured } = makeResponse()
+    const req = new EventEmitter() as unknown as IncomingMessage
+    req.destroy = () => req
+    req.pause = () => req
+    queueMicrotask(() => {
+      req.emit('data', Buffer.from('{ not json'))
+      req.emit('end')
+    })
+
+    await handleLateCheckout(req, res, transport)
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(400)
+    expect(JSON.parse(captured.body)).toMatchObject({ code: 'INVALID_REQUEST' })
+  })
+
+  it('maps an unexpected forwarding failure to HTTP 502 AUTOMATION_FAILED', async () => {
+    const transport: WebhookTransport = {
+      send: vi.fn().mockRejectedValue(new Error('boom')),
+    }
+    const { res, captured } = makeResponse()
+
+    await handleLateCheckout(makeRequest(validLateCheckoutPayload), res, transport)
+
+    expect(captured.status).toBe(502)
+    expect(JSON.parse(captured.body)).toMatchObject({
+      status: 'error',
+      code: 'AUTOMATION_FAILED',
+    })
   })
 })

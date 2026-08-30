@@ -12,7 +12,7 @@ import { LoadingState } from '@/components/state/LoadingState'
 import { SuccessState } from '@/components/state/SuccessState'
 import { ErrorState } from '@/components/state/ErrorState'
 import { MODES } from '@/modes/modeRegistry'
-import { CONCIERGE_CATEGORIES } from '@/modes/concierge/conciergeCategories'
+import { PRIMARY_CATEGORIES, MORE_CATEGORIES } from '@/modes/concierge/conciergeCategories'
 import type { ConciergeRequest } from '@/api/types'
 
 const TIME_OPTIONS = [
@@ -32,8 +32,17 @@ export function AIConciergeView() {
   const [request, setRequest] = useState('')
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('any')
   const [category, setCategory] = useState<string | null>(null)
+  const [showMore, setShowMore] = useState(false)
+
+  const visibleCategories = showMore
+    ? [...PRIMARY_CATEGORIES, ...MORE_CATEGORIES]
+    : [...PRIMARY_CATEGORIES]
 
   function selectCategory(categoryId: string, sampleRequest: string) {
+    if (categoryId === 'more-services') {
+      setShowMore(true)
+      return
+    }
     setCategory(categoryId)
     if (sampleRequest) {
       setRequest(sampleRequest)
@@ -44,6 +53,7 @@ export function AIConciergeView() {
     reset()
     setRequest('')
     setCategory(null)
+    setShowMore(false)
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -52,7 +62,7 @@ export function AIConciergeView() {
       guestId: '',
       sessionId: '',
       roomNumber: Number(roomNumber),
-request: request.trim(),
+      request: request.trim(),
       mode: 'AI_CONCIERGE',
     }
     void run(payload)
@@ -111,8 +121,7 @@ request: request.trim(),
               <div>
                 <h2>Welcome to {mode.title}</h2>
                 <p className="muted">
-                  From dinner reservations to local highlights, we handle the details so you can
-                  relax.
+                  From room help to local highlights, we handle the details so you can relax.
                 </p>
               </div>
             </div>
@@ -120,7 +129,7 @@ request: request.trim(),
 
           <Card title="What do you need help with?">
             <div className="category-grid" role="group" aria-label="Assistance categories">
-              {CONCIERGE_CATEGORIES.map((item) => {
+              {visibleCategories.map((item) => {
                 const selected = category === item.id
                 return (
                   <button
@@ -137,6 +146,19 @@ request: request.trim(),
                   </button>
                 )
               })}
+              {showMore ? (
+                <button
+                  type="button"
+                  className="category-chip"
+                  onClick={() => {
+                    setShowMore(false)
+                    setCategory(null)
+                  }}
+                >
+                  <Icon name="minus" size={18} />
+                  <span>Less</span>
+                </button>
+              ) : null}
             </div>
           </Card>
 

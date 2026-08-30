@@ -50,23 +50,60 @@ describe('AIConciergeView', () => {
     void mockSubmit()
   })
 
-  it('renders the welcome message and categories', () => {
+  it('renders the welcome message and primary categories', () => {
     renderView()
     expect(screen.getByRole('heading', { name: 'Your concierge' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Dining & reservations/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Local recommendations/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Events & tickets/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hotel & Room Help/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Food & Dining/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Housekeeping/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Transport & Airport/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Local Things to Do/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /More Services/ })).toBeInTheDocument()
+  })
+
+  it('does not show extra categories until More Services is clicked', () => {
+    renderView()
+    expect(screen.queryByRole('button', { name: /Spa & Wellness/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Activities & Experiences/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Check-in \/ Check-out/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Payments & Hotel Charges/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Special Requests/ })).not.toBeInTheDocument()
+  })
+
+  it('reveals additional categories when More Services is clicked', async () => {
+    const user = userEvent.setup()
+    renderView()
+
+    await user.click(screen.getByRole('button', { name: /More Services/ }))
+
+    expect(screen.getByRole('button', { name: /Spa & Wellness/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Activities & Experiences/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Check-in \/ Check-out/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Payments & Hotel Charges/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Special Requests/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Less/ })).toBeInTheDocument()
+  })
+
+  it('hides extra categories when Less is clicked', async () => {
+    const user = userEvent.setup()
+    renderView()
+
+    await user.click(screen.getByRole('button', { name: /More Services/ }))
+    expect(screen.getByRole('button', { name: /Spa & Wellness/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Less/ }))
+    expect(screen.queryByRole('button', { name: /Spa & Wellness/ })).not.toBeInTheDocument()
   })
 
   it('prefills the request when a category is chosen', async () => {
     const user = userEvent.setup()
     renderView()
 
-    await user.click(screen.getByRole('button', { name: /Dining & reservations/ }))
+    await user.click(screen.getByRole('button', { name: /Food & Dining/ }))
 
     const textarea = screen.getByRole('textbox', { name: /Your request/ })
-    expect(((textarea as HTMLTextAreaElement).value.match(/recommend restaurant/i))).not.toBeNull()
-    expect(screen.getByRole('button', { name: /Dining & reservations/ })).toHaveAttribute(
+    expect(((textarea as HTMLTextAreaElement).value.match(/restaurant/i))).not.toBeNull()
+    expect(screen.getByRole('button', { name: /Food & Dining/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     )

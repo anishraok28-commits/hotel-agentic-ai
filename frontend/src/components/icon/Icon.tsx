@@ -47,6 +47,15 @@ const ICON_PATHS: Record<string, ReactNode> = {
   info: (
     <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1 5h2v2h-2V7zm0 4h2v6h-2v-6z" />
   ),
+  broom: (
+    <path d="M16.2 3.2l4.6 4.6-1.4 1.4-1-1V12c0 1.1-.9 2-2 2h-1v5c0 .6-.4 1-1 1s-1-.4-1-1v-5h-2v5c0 .6-.4 1-1 1s-1-.4-1-1v-5H7.6c-1.1 0-2-.9-2-2V8.2l-1 1L3.2 7.8l4.6-4.6L12 3.4l4.2-.2zM7 12V9.4l5-5 5 5V12H7z" />
+  ),
+  compass: (
+    <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-4.3-6.3l4.8-1.2 1.2-4.8 1.5 4.5-4.5 1.5z" />
+  ),
+  creditCard: (
+    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V10h16v6zm0-10H4V6h16v2zM6 14h4v2H6v-2z" />
+  ),
 }
 
 /** Inline SVG icon set keyed by symbol names from the mode registry. */

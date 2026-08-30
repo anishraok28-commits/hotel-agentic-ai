@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -30,8 +31,11 @@ type FilterId = (typeof FILTERS)[number]['id']
 export function QRRoomServiceView() {
   const mode = MODES.QR_ROOM_SERVICE
   const { result, run, reset } = useModeSubmit(mode.id)
+  const [searchParams] = useSearchParams()
+  const qrToken = searchParams.get('token') ?? ''
+  const roomFromQr = searchParams.get('room') ?? ''
   const [filter, setFilter] = useState<FilterId>('all')
-  const [roomNumber, setRoomNumber] = useState('')
+  const [roomNumber, setRoomNumber] = useState(roomFromQr)
   const [notes, setNotes] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
 
@@ -73,6 +77,7 @@ export function QRRoomServiceView() {
         unitPrice,
       })),
       notes: notes.trim() ? notes : undefined,
+      qrToken: qrToken || undefined,
       mode: 'QR_ROOM_SERVICE',
     }
     void run(payload)

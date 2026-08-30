@@ -16,6 +16,16 @@ const postJson = (
     headers: { 'Content-Type': 'application/json' },
   })
 
+function lastFetchCall(fetchMock: ReturnType<typeof vi.fn>) {
+  const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit]
+  return {
+    url,
+    method: opts.method,
+    headers: opts.headers as Record<string, string>,
+    body: opts.body as string,
+  }
+}
+
 describe('submit (real Backend path)', () => {
   const fetchMock = vi.fn()
 
@@ -73,6 +83,141 @@ describe('submit (real Backend path)', () => {
       status: 'error',
       code: 'INTERNAL_ERROR',
       requestId: 'local-parse',
+    })
+  })
+})
+
+describe('fetch request shape', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'accepted', requestId: 'r1', message: 'ok', data: {} }, true, 202),
+    )
+  })
+
+  it('sends POST to /api/concierge with correct URL', async () => {
+    await submit('POST /api/concierge', { guestId: 'g1' })
+    const call = lastFetchCall(fetchMock)
+    expect(call.url).toBe('http://test.local/api/concierge')
+    expect(call.method).toBe('POST')
+  })
+
+  it('sends POST to /api/room-service with correct URL', async () => {
+    await submit('POST /api/room-service', { items: [] })
+    const call = lastFetchCall(fetchMock)
+    expect(call.url).toBe('http://test.local/api/room-service')
+    expect(call.method).toBe('POST')
+  })
+
+  it('sends POST to /api/late-checkout with correct URL', async () => {
+    await submit('POST /api/late-checkout', { requestedTime: '2026-01-01T12:00:00Z' })
+    const call = lastFetchCall(fetchMock)
+    expect(call.url).toBe('http://test.local/api/late-checkout')
+    expect(call.method).toBe('POST')
+  })
+
+  it('includes Content-Type: application/json header', async () => {
+    await submit('POST /api/concierge', { guestId: 'g1' })
+    const call = lastFetchCall(fetchMock)
+    expect(call.headers['Content-Type']).toBe('application/json')
+  })
+
+  it('includes Authorization header when VITE_SERVICE_TOKEN is set', async () => {
+    await submit('POST /api/concierge', { guestId: 'g1' })
+    const call = lastFetchCall(fetchMock)
+    expect(call.headers['Authorization']).toBeDefined()
+    expect(call.headers['Authorization']).toMatch(/^Bearer /)
+  })
+
+  it('sends the payload as JSON-stringified body', async () => {
+    const payload = { guestId: 'g1', roomNumber: 214, mode: 'AI_CONCIERGE' }
+    await submit('POST /api/concierge', payload)
+    const call = lastFetchCall(fetchMock)
+    expect(JSON.parse(call.body)).toEqual(payload)
+  })
+})
+
+describe('HTTP error responses', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('surfaces AUTH_REQUIRED from HTTP 401', async () => {
+    fetchMock.mockResolvedValue(
+      postJson(
+        { status: 'error', requestId: 'b1', message: 'Authentication required', code: 'AUTH_REQUIRED' },
+        false,
+        401,
+      ),
+    )
+    const result = await submit('POST /api/concierge', { guestId: 'g1' })
+    expect(result).toMatchObject({ status: 'error', code: 'AUTH_REQUIRED' })
+  })
+
+  it('surfaces RATE_LIMITED from HTTP 429', async () => {
+    fetchMock.mockResolvedValue(
+      postJson(
+        { status: 'error', requestId: 'b2', message: 'Too many requests', code: 'RATE_LIMITED' },
+        false,
+        429,
+      ),
+    )
+    const result = await submit('POST /api/room-service', { items: [] })
+    expect(result).toMatchObject({ status: 'error', code: 'RATE_LIMITED' })
+  })
+
+  it('surfaces AUTOMATION_FAILED from HTTP 502', async () => {
+    fetchMock.mockResolvedValue(
+      postJson(
+        { status: 'error', requestId: 'b3', message: 'Automation failed', code: 'AUTOMATION_FAILED' },
+        false,
+        502,
+      ),
+    )
+    const result = await submit('POST /api/late-checkout', { requestedTime: '2026-01-01T12:00:00Z' })
+    expect(result).toMatchObject({ status: 'error', code: 'AUTOMATION_FAILED' })
+  })
+
+  it('returns INTERNAL_ERROR for non-ok response without parseable error body', async () => {
+    fetchMock.mockResolvedValue(new Response('Bad Gateway', { status: 502 }))
+    const result = await submit('POST /api/concierge', { guestId: 'g1' })
+    expect(result).toMatchObject({ status: 'error', code: 'INTERNAL_ERROR', requestId: 'local-http' })
+  })
+})
+
+describe('network and timeout failures', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('returns AUTOMATION_FAILED on network error', async () => {
+    fetchMock.mockRejectedValue(new Error('fetch failed'))
+    const result = await submit('POST /api/concierge', { guestId: 'g1' })
+    expect(result).toMatchObject({
+      status: 'error',
+      code: 'AUTOMATION_FAILED',
+      requestId: 'local-network',
+      message: 'Failed to reach the backend service',
+    })
+  })
+
+  it('returns INTERNAL_ERROR on timeout (AbortError)', async () => {
+    fetchMock.mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'))
+    const result = await submit('POST /api/room-service', { items: [] })
+    expect(result).toMatchObject({
+      status: 'error',
+      code: 'INTERNAL_ERROR',
+      requestId: 'local-timeout',
+      message: 'The request timed out. Please try again.',
     })
   })
 })
