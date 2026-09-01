@@ -494,7 +494,7 @@ function main(): void {
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
 
-  server.listen(env.port, () => {
+  server.listen(env.port, '0.0.0.0', () => {
     console.log(`Backend listening on port ${env.port} (env: ${env.nodeEnv})`)
   })
 }
