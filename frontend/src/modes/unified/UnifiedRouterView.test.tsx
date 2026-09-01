@@ -2,15 +2,17 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { UnifiedRouterView } from './UnifiedRouterView'
+import { NotFound } from '@/components/state/NotFound'
 
-function renderUnified() {
+function renderUnified(path = '/') {
   return render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/" element={<UnifiedRouterView />} />
         <Route path="/concierge" element={<p>AI Concierge View Rendered</p>} />
         <Route path="/room-service" element={<p>QR Room Service View Rendered</p>} />
         <Route path="/late-checkout" element={<p>Late Checkout View Rendered</p>} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -48,5 +50,11 @@ describe('3_IN_1_UNIFIED routing layer', () => {
     const link = screen.getByRole('link', { name: /Late Checkout/ })
     link.click()
     expect(await screen.findByText('Late Checkout View Rendered')).toBeInTheDocument()
+  })
+
+  it('renders NotFound for unmatched routes', () => {
+    renderUnified('/unknown-path')
+    expect(screen.getByRole('heading', { name: '404' })).toBeInTheDocument()
+    expect(screen.getByText(/could not find the page you requested/)).toBeInTheDocument()
   })
 })

@@ -1,20 +1,24 @@
 /**
  * Room-specific QR token generation and verification.
  *
- * A QR token encodes: roomId + HMAC signature.
- * Format: base64url(roomId:hex-hmac-sha256(roomId, secret))
+ * Two token formats are supported:
  *
- * This ensures:
- * - Each room gets a unique token
- * - Tokens cannot be forged without the secret
- * - Room 304's token cannot be used for Room 305
- * - Tokens can be verified without a database lookup
+ * V2 (current): base64url(roomId|timestamp|hex-hmac-sha256(roomId|timestamp, secret))
+ *   - Includes an issuance timestamp so tokens can expire independently.
+ *   - Default TTL: 24 hours (configurable via qrTokenTtlMs).
+ *
+ * V1 (legacy):  base64url(roomId:hex-hmac-sha256(roomId, secret))
+ *   - No timestamp; verified for backward compatibility with existing QR codes.
+ *   - Still cryptographically bound to the room.
  *
  * The QR token alone is NOT sufficient for authorization — it must be
  * combined with an active guest session (see session/store.ts).
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
+
+/** Default QR token lifetime: 24 hours. */
+export const DEFAULT_QR_TOKEN_TTL_MS = 24 * 60 * 60 * 1000
 
 function base64urlEncode(value: string): string {
   return Buffer.from(value).toString('base64url')
@@ -25,37 +29,89 @@ function base64urlDecode(value: string): string {
 }
 
 /**
- * Generate a QR token for a specific room.
- * The token embeds the roomId and a MAC so it can be verified later
- * without a database lookup.
+ * Generate a V2 QR token for a specific room.
+ * Embeds roomId + issuance timestamp + HMAC so the token can expire
+ * independently of the session.
  */
-export function generateQrToken(roomId: number, secret: string): string {
-  const payload = String(roomId)
+export function generateQrToken(
+  roomId: number,
+  secret: string,
+  issuedAt: number = Date.now(),
+): string {
+  const payload = `${roomId}|${issuedAt}`
   const hmac = createHmac('sha256', secret).update(payload).digest('hex')
-  return base64urlEncode(`${payload}:${hmac}`)
+  return base64urlEncode(`${payload}|${hmac}`)
+}
+
+export interface QrTokenResult {
+  readonly roomId: number
+  readonly issuedAt: number | undefined
 }
 
 /**
- * Verify a QR token and return the encoded roomId if valid.
- * Returns undefined when the token is malformed, tampered, or missing.
+ * Verify a QR token and return the roomId if valid.
+ *
+ * Returns undefined when the token is:
+ * - Malformed or not base64url
+ * - Tampered (HMAC mismatch)
+ * - Contains an invalid roomId (not 1–9999)
+ * - Expired (V2 tokens only, when ttlMs is provided)
  */
-export function verifyQrToken(token: string, secret: string): number | undefined {
+export function verifyQrToken(
+  token: string,
+  secret: string,
+  ttlMs: number = DEFAULT_QR_TOKEN_TTL_MS,
+): QrTokenResult | undefined {
   try {
     const decoded = base64urlDecode(token)
-    const sep = decoded.lastIndexOf(':')
-    if (sep === -1) return undefined
 
-    const payload = decoded.slice(0, sep)
-    const hmac = decoded.slice(sep + 1)
+    // Try V2 format: roomId|timestamp|hmac
+    const pipeSep = decoded.lastIndexOf('|')
+    if (pipeSep !== -1) {
+      const beforeHmac = decoded.slice(0, pipeSep)
+      const hmac = decoded.slice(pipeSep + 1)
+      const tsSep = beforeHmac.lastIndexOf('|')
+      if (tsSep !== -1) {
+        const roomIdStr = beforeHmac.slice(0, tsSep)
+        const timestampStr = beforeHmac.slice(tsSep + 1)
+        const roomId = Number(roomIdStr)
+        const issuedAt = Number(timestampStr)
 
-    const roomId = Number(payload)
-    if (!Number.isInteger(roomId) || roomId < 1 || roomId > 9999) return undefined
+        if (
+          Number.isInteger(roomId) && roomId >= 1 && roomId <= 9999 &&
+          Number.isFinite(issuedAt) && issuedAt > 0
+        ) {
+          const payload = `${roomId}|${issuedAt}`
+          const expected = createHmac('sha256', secret).update(payload).digest('hex')
+          if (hmac.length === expected.length &&
+              timingSafeEqual(Buffer.from(hmac), Buffer.from(expected))) {
+            // Check expiration for V2 tokens
+            if (ttlMs > 0 && Date.now() - issuedAt > ttlMs) {
+              return undefined
+            }
+            return { roomId, issuedAt }
+          }
+        }
+      }
+    }
 
-    const expected = createHmac('sha256', secret).update(payload).digest('hex')
-    if (hmac.length !== expected.length) return undefined
-    if (!timingSafeEqual(Buffer.from(hmac), Buffer.from(expected))) return undefined
+    // Try V1 format (legacy): roomId:hmac
+    const colonSep = decoded.lastIndexOf(':')
+    if (colonSep !== -1) {
+      const payload = decoded.slice(0, colonSep)
+      const hmac = decoded.slice(colonSep + 1)
+      const roomId = Number(payload)
+      if (Number.isInteger(roomId) && roomId >= 1 && roomId <= 9999) {
+        const expected = createHmac('sha256', secret).update(payload).digest('hex')
+        if (hmac.length === expected.length &&
+            timingSafeEqual(Buffer.from(hmac), Buffer.from(expected))) {
+          // Legacy tokens have no timestamp; treat as non-expiring for backward compat
+          return { roomId, issuedAt: undefined }
+        }
+      }
+    }
 
-    return roomId
+    return undefined
   } catch {
     return undefined
   }

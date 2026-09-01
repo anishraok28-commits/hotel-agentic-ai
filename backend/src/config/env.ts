@@ -20,6 +20,7 @@ export interface EnvConfig {
   readonly makeLateCheckoutWebhookUrl: string
   readonly qrTokenSecret: string
   readonly sessionTtlHours: number
+  readonly dbPath: string
 }
 
 function requireEnv(name: string): string {
@@ -73,5 +74,6 @@ export function loadEnv(): EnvConfig {
     makeLateCheckoutWebhookUrl: requireEnv('MAKE_LATE_CHECKOUT_WEBHOOK_URL'),
     qrTokenSecret: optionalEnv('QR_TOKEN_SECRET', 'dev-qr-secret-do-not-use-in-production'),
     sessionTtlHours: optionalIntEnv('SESSION_TTL_HOURS', 24),
+    dbPath: optionalEnv('DB_PATH', ':memory:'),
   }
 }

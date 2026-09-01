@@ -35,6 +35,27 @@ function isNonEmptyString(value: unknown): boolean {
   return typeof value === 'string' && value.trim() !== ''
 }
 
+/**
+ * Validate a guest or session identifier.
+ * Accepts UUIDs and alphanumeric strings up to 128 characters.
+ * Rejects empty, whitespace-only, or oversized identifiers.
+ */
+function isValidIdentifier(value: unknown, fieldName: string, errors: ValidationError[]): boolean {
+  if (typeof value !== 'string') {
+    addError(errors, fieldName, 'Required string')
+    return false
+  }
+  if (value.trim() === '') {
+    addError(errors, fieldName, 'Required non-empty string')
+    return false
+  }
+  if (value.length > 128) {
+    addError(errors, fieldName, 'Max 128 characters')
+    return false
+  }
+  return true
+}
+
 /** True when value is an ISO-8601 UTC timestamp that is strictly in the future. */
 function isValidFutureIsoUtc(value: unknown): boolean {
   if (typeof value !== 'string' || value === '') return false
@@ -56,12 +77,8 @@ export function validateConciergePayload(payload: unknown): ValidationResult {
   const p = payload as Record<string, unknown>
   const errors: ValidationError[] = []
 
-  if (!isNonEmptyString(p.guestId)) {
-    addError(errors, 'guestId', 'Required string')
-  }
-  if (!isNonEmptyString(p.sessionId)) {
-    addError(errors, 'sessionId', 'Required string')
-  }
+  isValidIdentifier(p.guestId, 'guestId', errors)
+  isValidIdentifier(p.sessionId, 'sessionId', errors)
   if (
     typeof p.roomNumber !== 'number' ||
     !Number.isInteger(p.roomNumber) ||
@@ -91,12 +108,8 @@ export function validateRoomServicePayload(payload: unknown): RoomServiceValidat
   const p = payload as Record<string, unknown>
   const errors: ValidationError[] = []
 
-  if (!isNonEmptyString(p.guestId)) {
-    addError(errors, 'guestId', 'Required string')
-  }
-  if (!isNonEmptyString(p.sessionId)) {
-    addError(errors, 'sessionId', 'Required string')
-  }
+  isValidIdentifier(p.guestId, 'guestId', errors)
+  isValidIdentifier(p.sessionId, 'sessionId', errors)
   if (
     typeof p.roomNumber !== 'number' ||
     !Number.isInteger(p.roomNumber) ||
@@ -177,12 +190,8 @@ export function validateLateCheckoutPayload(payload: unknown): ValidationResult 
   const p = payload as Record<string, unknown>
   const errors: ValidationError[] = []
 
-  if (!isNonEmptyString(p.guestId)) {
-    addError(errors, 'guestId', 'Required string')
-  }
-  if (!isNonEmptyString(p.sessionId)) {
-    addError(errors, 'sessionId', 'Required string')
-  }
+  isValidIdentifier(p.guestId, 'guestId', errors)
+  isValidIdentifier(p.sessionId, 'sessionId', errors)
   if (
     typeof p.roomNumber !== 'number' ||
     !Number.isInteger(p.roomNumber) ||

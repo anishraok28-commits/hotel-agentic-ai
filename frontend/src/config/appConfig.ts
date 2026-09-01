@@ -8,7 +8,7 @@
  */
 
 export interface AppConfig {
-  /** Base URL of the single Backend (future connection, not used yet). */
+  /** Base URL of the Backend. Empty string means same-origin "/api" routing. */
   readonly apiBaseUrl: string
   /** Runtime environment: local | staging | production. */
   readonly env: 'local' | 'staging' | 'production'
@@ -20,7 +20,7 @@ function parseEnv(): AppConfig {
     rawEnv === 'staging' || rawEnv === 'production' ? rawEnv : 'local'
 
   return {
-    apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? 'https://api.example.com',
+    apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
     env,
   }
 }

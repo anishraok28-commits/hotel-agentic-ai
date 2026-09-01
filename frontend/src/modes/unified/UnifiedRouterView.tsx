@@ -50,11 +50,6 @@ export function UnifiedRouterView() {
           </Link>
         ))}
       </div>
-
-      <p className="muted">
-        3_IN_1_UNIFIED is a routing layer only. It has no API route and no automation workflow of
-        its own. Each destination above owns its own future Backend call.
-      </p>
     </section>
   )
 }

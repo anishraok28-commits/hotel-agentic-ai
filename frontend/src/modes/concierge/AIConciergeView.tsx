@@ -201,9 +201,6 @@ export function AIConciergeView() {
               <div className="form__actions">
                 <Button type="submit">Send to concierge</Button>
               </div>
-              <p className="muted">
-                Prototype: routes to future POST /api/concierge (BOOKING workflow). Not connected.
-              </p>
             </form>
           </Card>
         </div>

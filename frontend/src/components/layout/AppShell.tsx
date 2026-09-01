@@ -30,10 +30,7 @@ export function AppShell({ children }: AppShellProps) {
       <main className="shell__main">{children}</main>
 
       <footer className="shell__footer">
-        <p>
-          Hotel Automation Platform - Frontend prototype. Backend is not connected yet; submissions
-          are mock-only.
-        </p>
+        <p>Hotel Automation Platform</p>
       </footer>
     </div>
   )

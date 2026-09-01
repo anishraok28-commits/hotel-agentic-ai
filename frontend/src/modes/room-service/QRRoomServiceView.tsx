@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
+import { checkOrderStatus } from '@/api/mockTransport'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -17,7 +18,7 @@ import { MODES } from '@/modes/modeRegistry'
 import { MENU, cartTotal } from '@/modes/room-service/menu'
 import type { CartLine } from '@/modes/room-service/menu'
 import { formatPrice } from '@/utils/format'
-import type { RoomServiceRequest } from '@/api/types'
+import type { RoomServiceRequest, OrderDetails, OrderStatus, RoomServiceItem } from '@/api/types'
 
 const FILTERS = [
   { id: 'all', label: 'All items', icon: 'grid' },
@@ -27,7 +28,35 @@ const FILTERS = [
 
 type FilterId = (typeof FILTERS)[number]['id']
 
-/** QR_ROOM_SERVICE mode: browse a mock menu and place an order. */
+const STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
+  NEW: 'Order received',
+  PREPARING: 'Being prepared',
+  READY: 'Ready for delivery',
+  DELIVERED: 'Delivered',
+}
+
+function extractOrderData(
+  response: { data?: Record<string, unknown> },
+): OrderDetails | null {
+  const d = response.data
+  if (!d || typeof d !== 'object') return null
+  const orderId = d.orderId
+  const status = d.status
+  const items = d.items
+  const total = d.total
+  if (typeof orderId !== 'string' || typeof status !== 'string') return null
+  if (!Array.isArray(items) || typeof total !== 'number') return null
+  return {
+    orderId,
+    status: status as OrderStatus,
+    roomNumber: (d.roomNumber as number) ?? 0,
+    items: items as RoomServiceItem[],
+    total,
+    createdAt: (d.createdAt as string) ?? '',
+  }
+}
+
+/** QR_ROOM_SERVICE mode: browse a menu and place an order. */
 export function QRRoomServiceView() {
   const mode = MODES.QR_ROOM_SERVICE
   const { result, run, reset } = useModeSubmit(mode.id)
@@ -38,6 +67,11 @@ export function QRRoomServiceView() {
   const [roomNumber, setRoomNumber] = useState(roomFromQr)
   const [notes, setNotes] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
+  const [confirming, setConfirming] = useState(false)
+  const [orderData, setOrderData] = useState<OrderDetails | null>(null)
+  const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
 
   const visibleItems = MENU.filter((item) => filter === 'all' || item.category === filter)
   const total = cartTotal(cart)
@@ -66,6 +100,11 @@ export function QRRoomServiceView() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    setConfirming(true)
+  }
+
+  const handleRun = useCallback(async () => {
+    setConfirming(false)
     const payload: RoomServiceRequest = {
       guestId: '',
       sessionId: '',
@@ -80,12 +119,46 @@ export function QRRoomServiceView() {
       qrToken: qrToken || undefined,
       mode: 'QR_ROOM_SERVICE',
     }
-    void run(payload)
+    await run(payload)
+  }, [run, roomNumber, cart, notes, qrToken])
+
+  async function refreshStatus() {
+    if (!orderData) return
+    setStatusLoading(true)
+    setStatusError(null)
+    try {
+      const res = await checkOrderStatus(orderData.orderId)
+      if (res.status === 'error') {
+        setStatusError(res.message)
+      } else {
+        const s = res.data?.status
+        if (typeof s === 'string') {
+          setOrderStatus(s as OrderStatus)
+        }
+      }
+    } catch {
+      setStatusError('Could not check order status.')
+    } finally {
+      setStatusLoading(false)
+    }
   }
 
   function resetForm() {
     reset()
     setCart([])
+    setOrderData(null)
+    setOrderStatus(null)
+    setStatusError(null)
+    setConfirming(false)
+  }
+
+  // When result transitions to success, extract order data
+  if (result.phase === 'success' && orderData === null) {
+    const extracted = extractOrderData(result.response)
+    if (extracted) {
+      setOrderData(extracted)
+      setOrderStatus(extracted.status)
+    }
   }
 
   return (
@@ -102,13 +175,64 @@ export function QRRoomServiceView() {
         </Card>
       ) : null}
 
-      {result.phase === 'success' ? (
+      {result.phase === 'success' && orderData ? (
+        <Card>
+          <SuccessState title="Order confirmed">
+            <div className="order-confirmation">
+              <div className="order-confirmation__header">
+                <p className="order-confirmation__id">Order {orderData.orderId.slice(0, 8)}...</p>
+                <span className="order-status-badge" data-status={orderStatus ?? orderData.status}>
+                  {STATUS_LABELS[orderStatus ?? orderData.status]}
+                </span>
+              </div>
+
+              <ul className="order-confirmation__items">
+                {orderData.items.map((item: RoomServiceItem) => (
+                  <li key={item.itemId} className="order-confirmation__item">
+                    <span>{item.name} x{item.quantity}</span>
+                    <span>{formatPrice(item.unitPrice * item.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="order-confirmation__total">
+                <span>Total</span>
+                <strong>{formatPrice(orderData.total)}</strong>
+              </div>
+
+              <div className="order-confirmation__status-section">
+                {statusLoading ? (
+                  <span className="muted">Checking status...</span>
+                ) : null}
+                {statusError ? (
+                  <p className="muted order-confirmation__status-error">{statusError}</p>
+                ) : null}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={refreshStatus}
+                  disabled={statusLoading}
+                >
+                  <Icon name="sparkles" size={14} />
+                  <span>Refresh status</span>
+                </Button>
+              </div>
+
+              <div className="state__actions">
+                <Button variant="secondary" onClick={resetForm}>
+                  Place another order
+                </Button>
+              </div>
+            </div>
+          </SuccessState>
+        </Card>
+      ) : null}
+
+      {result.phase === 'success' && !orderData ? (
         <Card>
           <SuccessState title="Order placed">
-            <p>Your order is confirmed and will be prepared right away.</p>
-            <p className="muted">
-              Order total: {formatPrice(total)} - Request ID: {result.response.requestId}
-            </p>
+            <p>Your order has been received.</p>
+            <p className="muted">Request ID: {result.response.requestId}</p>
             <div className="state__actions">
               <Button variant="secondary" onClick={resetForm}>
                 Place another order
@@ -130,7 +254,34 @@ export function QRRoomServiceView() {
         </Card>
       ) : null}
 
-      {result.phase === 'idle' ? (
+      {confirming ? (
+        <Card>
+          <div className="state state--confirm" role="dialog" aria-label="Confirm your order">
+            <h3>Confirm your order</h3>
+            <ul className="order-confirmation__items">
+              {cart.map((line) => (
+                <li key={line.itemId} className="order-confirmation__item">
+                  <span>{line.name} x{line.quantity}</span>
+                  <span>{formatPrice(line.unitPrice * line.quantity)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="order-confirmation__total">
+              <span>Total</span>
+              <strong>{formatPrice(total)}</strong>
+            </div>
+            <p className="muted">Room {roomNumber || '—'}</p>
+            <div className="state__actions">
+              <Button onClick={handleRun}>Confirm order</Button>
+              <Button variant="secondary" onClick={() => setConfirming(false)}>
+                Go back
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {result.phase === 'idle' && !confirming ? (
         <div className="grid grid--2col">
           <Card title="Menu" description="Choose from our in-room selections.">
             <div className="filter-row" role="group" aria-label="Menu category filters">
@@ -162,10 +313,12 @@ export function QRRoomServiceView() {
                     </div>
                     <div className="menu-list__actions">
                       {inCart ? (
-                        <span className="added-badge" role="status">
-                          <Icon name="check" size={14} />
-                          <span>Added</span>
-                        </span>
+                        <QuantityStepper
+                          name={item.name}
+                          value={inCart.quantity}
+                          min={1}
+                          onChange={(q) => setQuantity(item.itemId, q)}
+                        />
                       ) : (
                         <Button
                           size="sm"
@@ -249,12 +402,8 @@ export function QRRoomServiceView() {
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setNotes(event.target.value)}
                 />
                 <div className="form__actions">
-                  <Button type="submit">Place order</Button>
+                  <Button type="submit">Review order</Button>
                 </div>
-                <p className="muted">
-                  Prototype: routes to future POST /api/room-service (ROOM_SERVICE workflow). Not
-                  connected.
-                </p>
               </form>
             )}
           </Card>

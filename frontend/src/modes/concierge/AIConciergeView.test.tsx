@@ -167,4 +167,43 @@ describe('AIConciergeView', () => {
     await user.click(screen.getByRole('button', { name: /Try again/ }))
     expect(screen.getByRole('button', { name: /Send to concierge/ })).toBeInTheDocument()
   })
+
+  it('preserves typed input after error and retry', async () => {
+    const user = userEvent.setup()
+    mocks.failToggle.value = true
+    void mockSubmit()
+    renderView()
+
+    await user.type(screen.getByRole('textbox', { name: /Your request/ }), 'Book a table for tonight')
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '101')
+    await user.click(screen.getByRole('button', { name: /Send to concierge/ }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    mocks.failToggle.value = false
+    void mockSubmit()
+    await user.click(screen.getByRole('button', { name: /Try again/ }))
+
+    expect(screen.getByRole('textbox', { name: /Your request/ })).toHaveValue('Book a table for tonight')
+    expect(screen.getByRole('spinbutton', { name: /Room number/ })).toHaveValue(101)
+  })
+
+  it('preserves category selection after error and retry', async () => {
+    const user = userEvent.setup()
+    mocks.failToggle.value = true
+    void mockSubmit()
+    renderView()
+
+    await user.click(screen.getByRole('button', { name: /Food & Dining/ }))
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '101')
+    await user.click(screen.getByRole('button', { name: /Send to concierge/ }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    mocks.failToggle.value = false
+    void mockSubmit()
+    await user.click(screen.getByRole('button', { name: /Try again/ }))
+
+    expect(screen.getByRole('button', { name: /Food & Dining/ })).toHaveAttribute('aria-pressed', 'true')
+  })
 })

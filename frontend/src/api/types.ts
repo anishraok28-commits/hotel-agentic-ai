@@ -5,6 +5,8 @@
 
 export type SubmitStatus = 'accepted' | 'completed'
 
+export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERED'
+
 export type ApiErrorCode =
   | 'INVALID_REQUEST'
   | 'MISSING_FIELD'
@@ -66,4 +68,26 @@ export interface LateCheckoutRequest {
   requestedTime: string
   qrToken?: string
   mode: 'LATE_CHECKOUT'
+}
+
+/** Order details returned in room-service success response. */
+export interface OrderDetails {
+  orderId: string
+  status: OrderStatus
+  roomNumber: number
+  items: RoomServiceItem[]
+  total: number
+  createdAt: string
+}
+
+/** Safe operational order data for admin/staff views (no guest/session internals). */
+export interface StaffOrder {
+  orderId: string
+  roomNumber: number
+  items: RoomServiceItem[]
+  total: number
+  notes: string | undefined
+  status: OrderStatus
+  createdAt: string
+  updatedAt: string
 }

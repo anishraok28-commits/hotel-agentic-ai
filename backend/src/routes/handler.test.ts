@@ -10,11 +10,12 @@ interface CapturedResponse {
   body: string
 }
 
-function makeRequest(body: unknown): IncomingMessage {
+function makeRequest(body: unknown, headers: Record<string, string> = {}): IncomingMessage {
   const raw = Buffer.from(JSON.stringify(body))
   const req = new EventEmitter() as unknown as IncomingMessage
   req.destroy = () => req
   req.pause = () => req
+  req.headers = headers as IncomingMessage['headers']
   queueMicrotask(() => {
     req.emit('data', raw)
     req.emit('end')

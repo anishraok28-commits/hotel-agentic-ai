@@ -141,10 +141,6 @@ export function LateCheckoutView() {
               <div className="form__actions">
                 <Button type="submit">Request late checkout</Button>
               </div>
-              <p className="muted">
-                Prototype: routes to future POST /api/late-checkout (LATE_CHECKOUT workflow). Not
-                connected.
-              </p>
             </form>
           </Card>
         </div>

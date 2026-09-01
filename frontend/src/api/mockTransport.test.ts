@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { submit } from '@/api/mockTransport'
+import { submit, checkOrderStatus, resetMockOrderState } from '@/api/mockTransport'
+
+beforeEach(() => {
+  resetMockOrderState()
+})
 
 vi.mock('@/config/appConfig', () => ({
   MOCK_API_ENABLED: false,
@@ -125,11 +129,10 @@ describe('fetch request shape', () => {
     expect(call.headers['Content-Type']).toBe('application/json')
   })
 
-  it('includes Authorization header when VITE_SERVICE_TOKEN is set', async () => {
+  it('does not include Authorization header on guest routes', async () => {
     await submit('POST /api/concierge', { guestId: 'g1' })
     const call = lastFetchCall(fetchMock)
-    expect(call.headers['Authorization']).toBeDefined()
-    expect(call.headers['Authorization']).toMatch(/^Bearer /)
+    expect(call.headers['Authorization']).toBeUndefined()
   })
 
   it('sends the payload as JSON-stringified body', async () => {
@@ -219,5 +222,53 @@ describe('network and timeout failures', () => {
       requestId: 'local-timeout',
       message: 'The request timed out. Please try again.',
     })
+  })
+})
+
+describe('checkOrderStatus (real Backend path)', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('sends POST to /api/order/status with orderId in body', async () => {
+    fetchMock.mockResolvedValue(
+      postJson(
+        { status: 'accepted', requestId: 'r1', message: 'ok', data: { status: 'PREPARING' } },
+        true,
+        200,
+      ),
+    )
+    await checkOrderStatus('order-123')
+    const call = lastFetchCall(fetchMock)
+    expect(call.url).toBe('http://test.local/api/order/status')
+    expect(call.method).toBe('POST')
+    expect(JSON.parse(call.body)).toEqual({ orderId: 'order-123' })
+  })
+
+  it('returns the success response for a 2xx', async () => {
+    fetchMock.mockResolvedValue(
+      postJson(
+        { status: 'accepted', requestId: 'r1', message: 'ok', data: { status: 'READY' } },
+        true,
+        200,
+      ),
+    )
+    const result = await checkOrderStatus('order-456')
+    expect(result).toMatchObject({ status: 'accepted', requestId: 'r1' })
+  })
+
+  it('returns an error for non-ok HTTP status', async () => {
+    fetchMock.mockResolvedValue(
+      postJson(
+        { status: 'error', requestId: 'b1', message: 'Not found', code: 'NOT_FOUND' },
+        false,
+        404,
+      ),
+    )
+    const result = await checkOrderStatus('order-nope')
+    expect(result).toMatchObject({ status: 'error', code: 'NOT_FOUND' })
   })
 })

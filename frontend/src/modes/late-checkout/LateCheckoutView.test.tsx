@@ -122,4 +122,65 @@ describe('LateCheckoutView', () => {
     })
     await screen.findByRole('heading', { name: 'Late checkout requested' })
   })
+
+  it('preserves radio selection after error and retry', async () => {
+    const user = userEvent.setup()
+    mocks.submit.mockImplementation(async () => ({
+      status: 'error',
+      requestId: 'stub-error',
+      message: 'The automation layer is unavailable.',
+      code: 'AUTOMATION_FAILED',
+    }))
+    renderView()
+
+    await user.click(screen.getByRole('radio', { name: /Full afternoon/ }))
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '101')
+    await user.click(screen.getByRole('button', { name: /Request late checkout/ }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    mocks.submit.mockImplementation(async () => ({
+      status: 'accepted',
+      requestId: 'stub-accepted',
+      message: 'Request mock-accepted.',
+      data: { submittedAt: '2026-08-11T00:00:00.000Z' },
+    }))
+    await user.click(screen.getByRole('button', { name: /Try again/ }))
+
+    // After retry, the form is shown again with preserved state
+    expect(screen.getByRole('radio', { name: /Full afternoon/ })).toBeChecked()
+    expect(screen.getByRole('spinbutton', { name: /Room number/ })).toHaveValue(101)
+  })
+
+  it('preserves room number after error and retry', async () => {
+    const user = userEvent.setup()
+    mocks.submit.mockImplementation(async () => ({
+      status: 'error',
+      requestId: 'stub-error',
+      message: 'Network failure.',
+      code: 'NETWORK_ERROR',
+    }))
+    renderView()
+
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
+    await user.click(screen.getByRole('button', { name: /Request late checkout/ }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    mocks.submit.mockImplementation(async () => ({
+      status: 'accepted',
+      requestId: 'stub-accepted',
+      message: 'Request mock-accepted.',
+      data: { submittedAt: '2026-08-11T00:00:00.000Z' },
+    }))
+    await user.click(screen.getByRole('button', { name: /Try again/ }))
+
+    expect(screen.getByRole('spinbutton', { name: /Room number/ })).toHaveValue(305)
+  })
+
+  it('does not render prototype text in the footer', () => {
+    renderView()
+    expect(screen.queryByText(/prototype/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not connected/i)).not.toBeInTheDocument()
+  })
 })
