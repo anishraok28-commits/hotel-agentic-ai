@@ -42,7 +42,9 @@ function optionalEnv(name: string, fallback: string): string {
 function optionalIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]
   if (raw === undefined || raw === '') return fallback
+
   const parsed = Number(raw)
+
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
@@ -50,7 +52,11 @@ const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:5173']
 
 function allowedOriginsEnv(): readonly string[] {
   const raw = process.env.ALLOWED_ORIGINS
-  if (raw === undefined || raw === '') return DEFAULT_ALLOWED_ORIGINS
+
+  if (raw === undefined || raw === '') {
+    return DEFAULT_ALLOWED_ORIGINS
+  }
+
   return raw
     .split(',')
     .map((origin) => origin.trim())
@@ -58,9 +64,13 @@ function allowedOriginsEnv(): readonly string[] {
 }
 
 export function loadEnv(): EnvConfig {
-  const nodeEnvRaw = optionalEnv('ENV', 'local')
+  // Read NODE_ENV so Render's NODE_ENV=production is correctly detected.
+  const nodeEnvRaw = optionalEnv('NODE_ENV', 'local')
+
   const nodeEnv: EnvConfig['nodeEnv'] =
-    nodeEnvRaw === 'staging' || nodeEnvRaw === 'production' ? nodeEnvRaw : 'local'
+    nodeEnvRaw === 'staging' || nodeEnvRaw === 'production'
+      ? nodeEnvRaw
+      : 'local'
 
   return {
     port: Number(optionalEnv('PORT', '3000')),
@@ -72,7 +82,10 @@ export function loadEnv(): EnvConfig {
     makeBookingWebhookUrl: requireEnv('MAKE_BOOKING_WEBHOOK_URL'),
     makeRoomServiceWebhookUrl: requireEnv('MAKE_ROOM_SERVICE_WEBHOOK_URL'),
     makeLateCheckoutWebhookUrl: requireEnv('MAKE_LATE_CHECKOUT_WEBHOOK_URL'),
-    qrTokenSecret: optionalEnv('QR_TOKEN_SECRET', 'dev-qr-secret-do-not-use-in-production'),
+    qrTokenSecret: optionalEnv(
+      'QR_TOKEN_SECRET',
+      'dev-qr-secret-do-not-use-in-production',
+    ),
     sessionTtlHours: optionalIntEnv('SESSION_TTL_HOURS', 24),
     dbPath: optionalEnv('DB_PATH', ':memory:'),
   }
