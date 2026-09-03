@@ -18,7 +18,12 @@ vi.mock('@/api/mockTransport', () => ({
 
 import { QRRoomServiceView } from './QRRoomServiceView'
 
-const defaultGuestContext = {
+const defaultGuestContext: {
+  roomNumber: number | null
+  guestId: string
+  sessionId: string
+  qrToken: string
+} = {
   roomNumber: null,
   guestId: '',
   sessionId: '',
@@ -319,6 +324,30 @@ describe('QRRoomServiceView', () => {
     await user.click(screen.getByRole('button', { name: /Place another order/ }))
 
     expect(screen.getByText('Your order is empty')).toBeInTheDocument()
+  })
+
+  it('auto-fills and locks the room number when verified room is in GuestContext', async () => {
+    const user = userEvent.setup()
+    sessionStorage.clear()
+    renderView({ roomNumber: 101, qrToken: 'qr-token-101', guestId: 'g-101', sessionId: 's-101' })
+
+    await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
+
+    const roomInput = screen.getByRole('spinbutton', { name: /Room number/ })
+    expect(roomInput).toHaveValue(101)
+    expect(roomInput).toBeDisabled()
+    expect(screen.getByText('Room verified from QR code')).toBeInTheDocument()
+  })
+
+  it('allows manual room entry when no verified room in GuestContext', async () => {
+    const user = userEvent.setup()
+    renderView()
+
+    await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
+
+    const roomInput = screen.getByRole('spinbutton', { name: /Room number/ })
+    expect(roomInput).not.toBeDisabled()
+    expect(screen.getByText('Where should we deliver?')).toBeInTheDocument()
   })
 
   it('sends the verified qrToken from GuestContext in order submission', async () => {

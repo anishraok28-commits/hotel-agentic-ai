@@ -53,8 +53,12 @@ export async function initGuestSession(
 ): Promise<ApiSuccessResponse<GuestContext> | ApiErrorResponse> {
   if (MOCK_API_ENABLED) {
     await sleep(300)
+    // Mock tokens follow the format "mock-token-{roomNumber}-{timestamp}"
+    // Parse the room number to simulate backend token-to-room lookup.
+    const tokenParts = qrToken.split('-')
+    const parsedRoom = tokenParts.length >= 3 ? Number(tokenParts[2]) : 0
     mockGuestContext = {
-      roomId: 0,
+      roomId: Number.isFinite(parsedRoom) && parsedRoom > 0 ? parsedRoom : 0,
       guestId: `guest-${crypto.randomUUID()}`,
       sessionId: `session-${crypto.randomUUID()}`,
     }

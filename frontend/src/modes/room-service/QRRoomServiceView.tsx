@@ -111,7 +111,7 @@ export function QRRoomServiceView() {
   // Use verified room and token from GuestContext only (never from URL room param)
   const verifiedRoom = guestCtx.roomNumber
   const qrToken = guestCtx.qrToken || qrTokenFromUrl
-  const initialRoom = verifiedRoom ? String(verifiedRoom) : ''
+  const initialRoom = verifiedRoom !== null ? String(verifiedRoom) : ''
 
   const [filter, setFilter] = useState<FilterId>('all')
   const [roomNumber, setRoomNumber] = useState(initialRoom)
@@ -126,7 +126,7 @@ export function QRRoomServiceView() {
 
   // When context changes, update room number
   useEffect(() => {
-    if (verifiedRoom) {
+    if (verifiedRoom !== null) {
       setRoomNumber(String(verifiedRoom))
     }
   }, [verifiedRoom])
@@ -472,13 +472,13 @@ export function QRRoomServiceView() {
                   min={1}
                   required
                   placeholder="e.g. 214"
-                  hint={verifiedRoom ? 'Room verified from QR code' : 'Where should we deliver?'}
+                  hint={verifiedRoom !== null ? 'Room verified from QR code' : 'Where should we deliver?'}
                   value={roomNumber}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
                     setRoomNumber(event.target.value)
                   }
-                  readOnly={!!verifiedRoom}
-                  disabled={!!verifiedRoom}
+                  readOnly={verifiedRoom !== null}
+                  disabled={verifiedRoom !== null}
                 />
                 <Textarea
                   name="notes"
