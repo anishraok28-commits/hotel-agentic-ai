@@ -28,7 +28,6 @@ function RootLanding() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const qrToken = searchParams.get('token') ?? ''
-  const roomFromUrl = searchParams.get('room') ?? ''
 
   const [error, setError] = useState<string | null>(null)
 
@@ -45,16 +44,10 @@ function RootLanding() {
       return
     }
 
-    const roomNumber = Number(roomFromUrl)
-    if (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999) {
-      setError('Invalid room number in QR code.')
-      return
-    }
-
     let cancelled = false
 
     async function initSession() {
-      const result = await initGuestSession(qrToken, roomNumber)
+      const result = await initGuestSession(qrToken)
       if (cancelled) return
 
       if (result.status === 'error') {
@@ -63,7 +56,7 @@ function RootLanding() {
       }
 
       const ctx: GuestContextValue = {
-        roomNumber: (result.data?.roomId as number) ?? roomNumber,
+        roomNumber: (result.data?.roomId as number) ?? null,
         guestId: (result.data?.guestId as string) ?? '',
         sessionId: (result.data?.sessionId as string) ?? '',
         qrToken,
@@ -75,7 +68,7 @@ function RootLanding() {
 
     void initSession()
     return () => { cancelled = true }
-  }, [qrToken, roomFromUrl, navigate])
+  }, [qrToken, navigate])
 
   if (error) {
     return (

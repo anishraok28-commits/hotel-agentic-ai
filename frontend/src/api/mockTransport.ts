@@ -50,12 +50,11 @@ let mockGuestContext: GuestContext | null = null
  */
 export async function initGuestSession(
   qrToken: string,
-  roomNumber: number,
 ): Promise<ApiSuccessResponse<GuestContext> | ApiErrorResponse> {
   if (MOCK_API_ENABLED) {
     await sleep(300)
     mockGuestContext = {
-      roomId: roomNumber,
+      roomId: 0,
       guestId: `guest-${crypto.randomUUID()}`,
       sessionId: `session-${crypto.randomUUID()}`,
     }
@@ -75,7 +74,7 @@ export async function initGuestSession(
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ qrToken, roomNumber }),
+      body: JSON.stringify({ qrToken }),
       signal: controller.signal,
     })
 
@@ -96,7 +95,7 @@ export async function initGuestSession(
     if (isRecord(body) && body.status === 'ok' && body.data) {
       const data = body.data as Record<string, unknown>
       const ctx: GuestContext = {
-        roomId: (data.roomId as number) ?? roomNumber,
+        roomId: (data.roomId as number) ?? 0,
         guestId: data.guestId as string,
         sessionId: data.sessionId as string,
       }

@@ -107,12 +107,11 @@ export function QRRoomServiceView() {
   const guestCtx = useGuestContext()
   const [searchParams] = useSearchParams()
   const qrTokenFromUrl = searchParams.get('token') ?? ''
-  const roomFromQr = searchParams.get('room') ?? ''
 
-  // Use verified room from GuestContext if available, fall back to URL param
+  // Use verified room and token from GuestContext only (never from URL room param)
   const verifiedRoom = guestCtx.roomNumber
   const qrToken = guestCtx.qrToken || qrTokenFromUrl
-  const initialRoom = verifiedRoom ? String(verifiedRoom) : roomFromQr
+  const initialRoom = verifiedRoom ? String(verifiedRoom) : ''
 
   const [filter, setFilter] = useState<FilterId>('all')
   const [roomNumber, setRoomNumber] = useState(initialRoom)

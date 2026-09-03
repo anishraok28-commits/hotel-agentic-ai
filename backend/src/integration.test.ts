@@ -290,20 +290,39 @@ async function handleGuestInit(
     return
   }
 
-  if (typeof roomNumber !== 'number' || !Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999) {
-    sendJson(res, 400, { status: 'error', requestId: 'local-validation', message: 'roomNumber required', code: 'MISSING_FIELD' })
-    return
-  }
-
   const { verifyQrToken } = await import('./session/qrToken.js')
-  const { getSession } = await import('./session/store.js')
+  const { getSession, checkIn: storeCheckIn } = await import('./session/store.js')
+  const { getRoomByNumber } = await import('./room/roomStore.js')
+
   const tokenResult = verifyQrToken(qrToken, e.qrTokenSecret)
-  if (tokenResult === undefined || tokenResult.roomId !== roomNumber) {
+  if (tokenResult === undefined) {
     sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'Invalid or expired QR token', code: 'AUTH_REQUIRED' })
     return
   }
 
-  const existingSession = getSession(roomNumber)
+  const verifiedRoomId = tokenResult.roomId
+
+  // If a roomNumber was provided (legacy QR URLs), reject mismatches
+  if (
+    typeof roomNumber === 'number' && Number.isInteger(roomNumber) &&
+    roomNumber >= 1 && roomNumber <= 9999 &&
+    roomNumber !== verifiedRoomId
+  ) {
+    sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'QR token room mismatch', code: 'AUTH_REQUIRED' })
+    return
+  }
+
+  const room = getRoomByNumber(verifiedRoomId)
+  if (room && !room.active) {
+    sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'Room is not active', code: 'AUTH_REQUIRED' })
+    return
+  }
+  if (room && room.qrToken !== qrToken) {
+    sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'QR token does not match room', code: 'AUTH_REQUIRED' })
+    return
+  }
+
+  const existingSession = getSession(verifiedRoomId)
   if (existingSession) {
     sendJson(res, 200, { status: 'ok', requestId: crypto.randomUUID(), message: 'Session active', data: { roomId: existingSession.roomId, guestId: existingSession.guestId, sessionId: existingSession.sessionId, expiresAt: new Date(existingSession.expiresAt).toISOString() } })
     return
@@ -312,7 +331,7 @@ async function handleGuestInit(
   const guestId = crypto.randomUUID()
   const sessionId = crypto.randomUUID()
   const ttlMs = e.sessionTtlHours * 60 * 60 * 1000
-  const session = checkIn(roomNumber, guestId, sessionId, ttlMs)
+  const session = storeCheckIn(verifiedRoomId, guestId, sessionId, ttlMs)
   sendJson(res, 200, { status: 'ok', requestId: crypto.randomUUID(), message: 'Session created', data: { roomId: session.roomId, guestId: session.guestId, sessionId: session.sessionId, expiresAt: new Date(session.expiresAt).toISOString() } })
 }
 
@@ -1153,5 +1172,51 @@ describe('Admin order status update', () => {
       status: 'PREPARING',
     })
     expect(res.status).toBe(401)
+  })
+})
+
+describe('QR room identity security', () => {
+  it('valid QR token returns correct room without roomNumber in request', async () => {
+    const qrToken = generateQrToken(101, env.qrTokenSecret)
+    const res = await request('POST', '/api/guest/init', {}, { qrToken })
+    expect(res.status).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data.roomId).toBe(101)
+  })
+
+  it('tampered room parameter cannot override token room identity', async () => {
+    const qrToken = generateQrToken(101, env.qrTokenSecret)
+    // Client tries to claim room 999 but token says 101
+    const res = await request('POST', '/api/guest/init', {}, { qrToken, roomNumber: 999 })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+  })
+
+  it('matching room parameter is accepted for backward compatibility', async () => {
+    const qrToken = generateQrToken(101, env.qrTokenSecret)
+    const res = await request('POST', '/api/guest/init', {}, { qrToken, roomNumber: 101 })
+    expect(res.status).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data.roomId).toBe(101)
+  })
+
+  it('invalid QR token is rejected', async () => {
+    const res = await request('POST', '/api/guest/init', {}, { qrToken: 'invalid-token' })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+  })
+
+  it('token for room 101 cannot create session for room 102', async () => {
+    const qrToken = generateQrToken(101, env.qrTokenSecret)
+    // Room 101 has no active session, so it creates one for room 101
+    const res1 = await request('POST', '/api/guest/init', {}, { qrToken })
+    expect(res1.status).toBe(200)
+    expect(JSON.parse(res1.body).data.roomId).toBe(101)
+
+    // Same token cannot be used to init for room 102
+    const res2 = await request('POST', '/api/guest/init', {}, { qrToken, roomNumber: 102 })
+    expect(res2.status).toBe(403)
   })
 })

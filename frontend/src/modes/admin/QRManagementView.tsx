@@ -54,7 +54,7 @@ export function QRManagementView() {
     if (!room || qrImages[room.roomNumber]) return
 
     const frontendUrl = window.location.origin
-    const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(room.qrToken)}&room=${room.roomNumber}`
+    const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(room.qrToken)}`
 
     void QRCode.toDataURL(qrUrl, {
       width: 256,
@@ -216,7 +216,7 @@ export function QRManagementView() {
                               className="room-card__qr-image"
                             />
                             <p className="muted" style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
-                              {window.location.origin}/?token={room.qrToken}&amp;room={room.roomNumber}
+                              {window.location.origin}/?token={room.qrToken}
                             </p>
                             <Button
                               size="sm"

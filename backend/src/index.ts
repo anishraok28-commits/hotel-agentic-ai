@@ -353,21 +353,9 @@ async function handleGuestInit(
     return
   }
 
-  if (
-    typeof roomNumber !== 'number' || !Number.isInteger(roomNumber) ||
-    roomNumber < 1 || roomNumber > 9999
-  ) {
-    sendJson(res, 400, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'roomNumber (integer 1-9999) required',
-      code: 'MISSING_FIELD',
-    })
-    return
-  }
-
+  // Verify QR token — room identity is derived solely from the signed token
   const tokenResult = verifyQrToken(qrToken, env.qrTokenSecret)
-  if (tokenResult === undefined || tokenResult.roomId !== roomNumber) {
+  if (tokenResult === undefined) {
     sendJson(res, 403, {
       status: 'error',
       requestId: 'local-validation',
@@ -377,8 +365,26 @@ async function handleGuestInit(
     return
   }
 
+  // Room identity comes exclusively from the verified token
+  const verifiedRoomId = tokenResult.roomId
+
+  // If a roomNumber was provided (legacy QR URLs), reject mismatches
+  if (
+    typeof roomNumber === 'number' && Number.isInteger(roomNumber) &&
+    roomNumber >= 1 && roomNumber <= 9999 &&
+    roomNumber !== verifiedRoomId
+  ) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'QR token room mismatch',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
   // Verify room exists and is active in the rooms table
-  const room = getRoomByNumber(roomNumber)
+  const room = getRoomByNumber(verifiedRoomId)
   if (room && !room.active) {
     sendJson(res, 403, {
       status: 'error',
@@ -401,7 +407,7 @@ async function handleGuestInit(
   }
 
   // Check for existing active session for this room
-  const existingSession = getSession(roomNumber)
+  const existingSession = getSession(verifiedRoomId)
   if (existingSession) {
     // Return existing session credentials
     sendJson(res, 200, {
@@ -422,7 +428,7 @@ async function handleGuestInit(
   const guestId = crypto.randomUUID()
   const sessionId = crypto.randomUUID()
   const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
-  const session = checkIn(roomNumber, guestId, sessionId, ttlMs)
+  const session = checkIn(verifiedRoomId, guestId, sessionId, ttlMs)
 
   sendJson(res, 200, {
     status: 'ok',
@@ -562,7 +568,7 @@ async function handleCreateRoom(
   const room = createRoom(roomNumber, qrToken)
 
   const frontendUrl = env.allowedOrigins[0] ?? 'http://localhost:5173'
-  const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(qrToken)}&room=${roomNumber}`
+  const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(qrToken)}`
 
   sendJson(res, 201, {
     status: 'ok',
