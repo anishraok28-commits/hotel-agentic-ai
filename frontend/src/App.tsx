@@ -102,10 +102,15 @@ function RootLanding() {
 
 /**
  * Wrapper that reads GuestContext from sessionStorage and provides it
- * to all child routes. Runs once on mount.
+ * to all child routes. Re-syncs after RootLanding saves context
+ * asynchronously during the initial QR scan flow.
+ *
+ * Uses a render-time read (not useEffect) so that when RootLanding
+ * writes to sessionStorage between mount and the next render, the
+ * provider picks it up without requiring an extra re-render trigger.
  */
-function GuestContextProvider({ children }: { children: React.ReactNode }) {
-  const [context] = useState<GuestContextValue>(() => {
+export function GuestContextProvider({ children }: { children: React.ReactNode }) {
+  const [context, setContext] = useState<GuestContextValue>(() => {
     return loadGuestContext() ?? {
       roomNumber: null,
       guestId: '',
@@ -113,6 +118,16 @@ function GuestContextProvider({ children }: { children: React.ReactNode }) {
       qrToken: '',
     }
   })
+
+  // RootLanding saves guest context to sessionStorage asynchronously
+  // (after an API call). Read at render time to pick up any context
+  // that was saved between our initial useState read and now.
+  // React allows conditional setState during render (adjusting state
+  // based on props/state) — this fires at most once per mount.
+  const stored = loadGuestContext()
+  if (stored && stored.qrToken && !context.qrToken) {
+    setContext(stored)
+  }
 
   return (
     <GuestContext.Provider value={context}>

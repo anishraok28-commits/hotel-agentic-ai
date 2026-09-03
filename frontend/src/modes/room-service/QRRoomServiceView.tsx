@@ -3,7 +3,7 @@ import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
 import { useGuestContext } from '@/context/GuestContext'
-import { checkOrderStatus, getGuestContext } from '@/api/mockTransport'
+import { checkOrderStatus } from '@/api/mockTransport'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -229,11 +229,12 @@ export function QRRoomServiceView() {
     if (extracted) {
       setOrderData(extracted)
       setOrderStatus(extracted.status)
-      // Persist active order and auth context for browser-refresh survival
-      const guestContext = getGuestContext()
+      // Persist active order and auth context for browser-refresh survival.
+      // Use the React context (guestCtx) which carries the verified session
+      // credentials from GuestContext, not the mockTransport module variable.
       const authCtx: AuthContext = {
-        guestId: guestContext?.guestId ?? '',
-        sessionId: guestContext?.sessionId ?? '',
+        guestId: guestCtx.guestId,
+        sessionId: guestCtx.sessionId,
         qrToken,
       }
       setAuth(authCtx)

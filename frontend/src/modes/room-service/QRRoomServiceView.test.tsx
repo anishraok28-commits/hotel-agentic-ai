@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { GuestContext } from '@/context/GuestContext'
 
 const mocks = vi.hoisted(() => ({
   submit: vi.fn(),
@@ -11,17 +12,25 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: true,
   createGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
-  getGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
   submit: mocks.submit,
   checkOrderStatus: mocks.checkOrderStatus,
 }))
 
 import { QRRoomServiceView } from './QRRoomServiceView'
 
-function renderView() {
+const defaultGuestContext = {
+  roomNumber: null,
+  guestId: '',
+  sessionId: '',
+  qrToken: '',
+}
+
+function renderView(contextOverrides?: Partial<typeof defaultGuestContext>) {
   return render(
     <MemoryRouter>
-      <QRRoomServiceView />
+      <GuestContext.Provider value={{ ...defaultGuestContext, ...contextOverrides }}>
+        <QRRoomServiceView />
+      </GuestContext.Provider>
     </MemoryRouter>,
   )
 }
@@ -219,7 +228,7 @@ describe('QRRoomServiceView', () => {
     await user.click(screen.getByRole('button', { name: /Refresh status/ }))
 
     expect(await screen.findByText('Being prepared')).toBeInTheDocument()
-    expect(mocks.checkOrderStatus).toHaveBeenCalledWith('test-order-123', { guestId: 'stub-guest', sessionId: 'stub-session', qrToken: '' })
+    expect(mocks.checkOrderStatus).toHaveBeenCalledWith('test-order-123', { guestId: '', sessionId: '', qrToken: '' })
   })
 
   it('handles status refresh error without losing confirmation data', async () => {
@@ -310,5 +319,86 @@ describe('QRRoomServiceView', () => {
     await user.click(screen.getByRole('button', { name: /Place another order/ }))
 
     expect(screen.getByText('Your order is empty')).toBeInTheDocument()
+  })
+
+  it('sends the verified qrToken from GuestContext in order submission', async () => {
+    const user = userEvent.setup()
+    sessionStorage.clear()
+    renderView({ qrToken: 'test-qr-token-abc', guestId: 'g-123', sessionId: 's-456' })
+
+    await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
+    await user.click(screen.getByRole('button', { name: /Review order/ }))
+    await user.click(screen.getByRole('button', { name: /Confirm order/ }))
+
+    await screen.findByRole('heading', { name: 'Order confirmed' })
+
+    const [, payload] = mocks.submit.mock.calls[0] as [string, Record<string, unknown>]
+    expect(payload.qrToken).toBe('test-qr-token-abc')
+  })
+
+  it('persists verified qrToken in stored order for status refresh', async () => {
+    const user = userEvent.setup()
+    sessionStorage.clear()
+    renderView({ qrToken: 'persist-token-xyz', guestId: 'g-789', sessionId: 's-012' })
+
+    await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
+    await user.click(screen.getByRole('button', { name: /Review order/ }))
+    await user.click(screen.getByRole('button', { name: /Confirm order/ }))
+
+    await screen.findByRole('heading', { name: 'Order confirmed' })
+
+    const stored = JSON.parse(sessionStorage.getItem('qr-room-service-active-order')!)
+    expect(stored.qrToken).toBe('persist-token-xyz')
+  })
+
+  it('refresh status sends verified qrToken from stored auth', async () => {
+    const user = userEvent.setup()
+    sessionStorage.clear()
+    renderView({ qrToken: 'refresh-token-999', guestId: 'g-abc', sessionId: 's-def' })
+
+    await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
+    await user.click(screen.getByRole('button', { name: /Review order/ }))
+    await user.click(screen.getByRole('button', { name: /Confirm order/ }))
+
+    await screen.findByRole('heading', { name: 'Order confirmed' })
+
+    await user.click(screen.getByRole('button', { name: /Refresh status/ }))
+
+    expect(await screen.findByText('Being prepared')).toBeInTheDocument()
+    expect(mocks.checkOrderStatus).toHaveBeenCalledWith(
+      'test-order-123',
+      expect.objectContaining({ qrToken: 'refresh-token-999' }),
+    )
+  })
+
+  it('restores order from sessionStorage with correct qrToken', async () => {
+    const user = userEvent.setup()
+
+    sessionStorage.setItem('qr-room-service-active-order', JSON.stringify({
+      orderId: 'restored-order',
+      status: 'NEW',
+      roomNumber: 305,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      total: 1200,
+      createdAt: new Date().toISOString(),
+      guestId: 'restored-guest',
+      sessionId: 'restored-session',
+      qrToken: 'restored-qr-token',
+    }))
+
+    renderView({ qrToken: 'restored-qr-token' })
+
+    expect(await screen.findByRole('heading', { name: 'Order confirmed' })).toBeInTheDocument()
+    expect(screen.getByText(/Order restored/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Refresh status/ }))
+
+    expect(mocks.checkOrderStatus).toHaveBeenCalledWith(
+      'restored-order',
+      expect.objectContaining({ qrToken: 'restored-qr-token' }),
+    )
   })
 })
