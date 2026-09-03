@@ -245,7 +245,7 @@ describe('checkOrderStatus (real Backend path)', () => {
     const call = lastFetchCall(fetchMock)
     expect(call.url).toBe('http://test.local/api/order/status')
     expect(call.method).toBe('POST')
-    expect(JSON.parse(call.body)).toEqual({ orderId: 'order-123' })
+    expect(JSON.parse(call.body)).toEqual({ orderId: 'order-123', qrToken: '', guestId: '', sessionId: '' })
   })
 
   it('returns the success response for a 2xx', async () => {

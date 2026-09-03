@@ -159,6 +159,7 @@ export function resetMockOrderState() {
  */
 export async function checkOrderStatus(
   _orderId: string,
+  auth?: { guestId: string; sessionId: string; qrToken: string },
 ): Promise<ApiSuccessResponse | ApiErrorResponse> {
   if (MOCK_API_ENABLED) {
     await sleep(300)
@@ -193,7 +194,12 @@ export async function checkOrderStatus(
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId: _orderId }),
+      body: JSON.stringify({
+        orderId: _orderId,
+        qrToken: auth?.qrToken ?? '',
+        guestId: auth?.guestId ?? '',
+        sessionId: auth?.sessionId ?? '',
+      }),
       signal: controller.signal,
     })
     clearTimeout(timer)

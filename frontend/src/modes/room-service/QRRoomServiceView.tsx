@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
-import { checkOrderStatus } from '@/api/mockTransport'
+import { checkOrderStatus, getGuestContext } from '@/api/mockTransport'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -33,6 +33,49 @@ const STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
   PREPARING: 'Being prepared',
   READY: 'Ready for delivery',
   DELIVERED: 'Delivered',
+}
+
+const ORDER_STORAGE_KEY = 'qr-room-service-active-order'
+
+function readStoredOrder(): { orderData: OrderDetails; auth: AuthContext } | null {
+  try {
+    const raw = sessionStorage.getItem(ORDER_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (
+      typeof parsed !== 'object' || parsed === null ||
+      typeof parsed.orderId !== 'string' ||
+      typeof parsed.status !== 'string' ||
+      !Array.isArray(parsed.items) ||
+      typeof parsed.total !== 'number' ||
+      typeof parsed.guestId !== 'string' ||
+      typeof parsed.sessionId !== 'string' ||
+      typeof parsed.qrToken !== 'string'
+    ) return null
+    return {
+      orderData: {
+        orderId: parsed.orderId,
+        status: parsed.status as OrderStatus,
+        roomNumber: (parsed.roomNumber as number) ?? 0,
+        items: parsed.items as RoomServiceItem[],
+        total: parsed.total,
+        createdAt: (parsed.createdAt as string) ?? '',
+      },
+      auth: {
+        guestId: parsed.guestId,
+        sessionId: parsed.sessionId,
+        qrToken: parsed.qrToken,
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+interface AuthContext {
+  guestId: string
+  sessionId: string
+  qrToken: string
 }
 
 function extractOrderData(
@@ -72,6 +115,17 @@ export function QRRoomServiceView() {
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
+  const [auth, setAuth] = useState<AuthContext | null>(null)
+
+  // Restore active order from sessionStorage on mount
+  useEffect(() => {
+    const stored = readStoredOrder()
+    if (stored) {
+      setOrderData(stored.orderData)
+      setOrderStatus(stored.orderData.status)
+      setAuth(stored.auth)
+    }
+  }, [])
 
   const visibleItems = MENU.filter((item) => filter === 'all' || item.category === filter)
   const total = cartTotal(cart)
@@ -127,7 +181,7 @@ export function QRRoomServiceView() {
     setStatusLoading(true)
     setStatusError(null)
     try {
-      const res = await checkOrderStatus(orderData.orderId)
+      const res = await checkOrderStatus(orderData.orderId, auth ?? undefined)
       if (res.status === 'error') {
         setStatusError(res.message)
       } else {
@@ -150,6 +204,8 @@ export function QRRoomServiceView() {
     setOrderStatus(null)
     setStatusError(null)
     setConfirming(false)
+    setAuth(null)
+    sessionStorage.removeItem(ORDER_STORAGE_KEY)
   }
 
   // When result transitions to success, extract order data
@@ -158,6 +214,20 @@ export function QRRoomServiceView() {
     if (extracted) {
       setOrderData(extracted)
       setOrderStatus(extracted.status)
+      // Persist active order and auth context for browser-refresh survival
+      const guestContext = getGuestContext()
+      const authCtx: AuthContext = {
+        guestId: guestContext?.guestId ?? '',
+        sessionId: guestContext?.sessionId ?? '',
+        qrToken,
+      }
+      setAuth(authCtx)
+      try {
+        sessionStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify({
+          ...extracted,
+          ...authCtx,
+        }))
+      } catch { /* storage full or unavailable */ }
     }
   }
 
@@ -175,7 +245,7 @@ export function QRRoomServiceView() {
         </Card>
       ) : null}
 
-      {result.phase === 'success' && orderData ? (
+      {orderData ? (
         <Card>
           <SuccessState title="Order confirmed">
             <div className="order-confirmation">

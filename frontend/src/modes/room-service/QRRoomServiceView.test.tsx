@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: true,
   createGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
+  getGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
   submit: mocks.submit,
   checkOrderStatus: mocks.checkOrderStatus,
 }))
@@ -218,7 +219,7 @@ describe('QRRoomServiceView', () => {
     await user.click(screen.getByRole('button', { name: /Refresh status/ }))
 
     expect(await screen.findByText('Being prepared')).toBeInTheDocument()
-    expect(mocks.checkOrderStatus).toHaveBeenCalledWith('test-order-123')
+    expect(mocks.checkOrderStatus).toHaveBeenCalledWith('test-order-123', { guestId: 'stub-guest', sessionId: 'stub-session', qrToken: '' })
   })
 
   it('handles status refresh error without losing confirmation data', async () => {
