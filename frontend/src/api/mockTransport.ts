@@ -522,7 +522,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isSuccessResponse(value: unknown): value is ApiSuccessResponse {
-  return isRecord(value) && value.status === 'accepted' && typeof value.message === 'string'
+  return isRecord(value) && (value.status === 'accepted' || value.status === 'ok') && typeof value.message === 'string'
 }
 
 function isErrorResponse(value: unknown): value is ApiErrorResponse {
