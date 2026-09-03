@@ -2,6 +2,9 @@ node_modules
 dist
 *.local
 
+# SQLite database (created by DB_PATH=./data/hotel.db)
+data/
+
 # Env: never commit real values (docs/api-contract.md section 6)
 .env
 .env.local

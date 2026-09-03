@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { ROUTABLE_MODES, MODES } from '@/modes/modeRegistry'
 import { Icon } from '@/components/icon/Icon'
 import { Link } from 'react-router-dom'
+import { useGuestContext } from '@/context/GuestContext'
 
 /**
  * 3_IN_1_UNIFIED mode.
@@ -13,12 +14,13 @@ import { Link } from 'react-router-dom'
  */
 export function UnifiedRouterView() {
   const unified = MODES['3_IN_1_UNIFIED']
+  const guestCtx = useGuestContext()
 
   return (
     <section className="mode-page">
       <PageHeader
         kicker={unified.title}
-        title="Welcome back"
+        title={guestCtx.roomNumber ? `Room ${guestCtx.roomNumber}` : 'Welcome back'}
         subtitle="Everything you need for your stay, in one place. Choose a service below."
       />
 

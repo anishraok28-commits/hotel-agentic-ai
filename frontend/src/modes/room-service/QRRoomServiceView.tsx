@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
+import { useGuestContext } from '@/context/GuestContext'
 import { checkOrderStatus, getGuestContext } from '@/api/mockTransport'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -103,11 +104,18 @@ function extractOrderData(
 export function QRRoomServiceView() {
   const mode = MODES.QR_ROOM_SERVICE
   const { result, run, reset } = useModeSubmit(mode.id)
+  const guestCtx = useGuestContext()
   const [searchParams] = useSearchParams()
-  const qrToken = searchParams.get('token') ?? ''
+  const qrTokenFromUrl = searchParams.get('token') ?? ''
   const roomFromQr = searchParams.get('room') ?? ''
+
+  // Use verified room from GuestContext if available, fall back to URL param
+  const verifiedRoom = guestCtx.roomNumber
+  const qrToken = guestCtx.qrToken || qrTokenFromUrl
+  const initialRoom = verifiedRoom ? String(verifiedRoom) : roomFromQr
+
   const [filter, setFilter] = useState<FilterId>('all')
-  const [roomNumber, setRoomNumber] = useState(roomFromQr)
+  const [roomNumber, setRoomNumber] = useState(initialRoom)
   const [notes, setNotes] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
   const [confirming, setConfirming] = useState(false)
@@ -116,6 +124,13 @@ export function QRRoomServiceView() {
   const [statusLoading, setStatusLoading] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [auth, setAuth] = useState<AuthContext | null>(null)
+
+  // When context changes, update room number
+  useEffect(() => {
+    if (verifiedRoom) {
+      setRoomNumber(String(verifiedRoom))
+    }
+  }, [verifiedRoom])
 
   // Restore active order from sessionStorage on mount
   useEffect(() => {
@@ -160,8 +175,8 @@ export function QRRoomServiceView() {
   const handleRun = useCallback(async () => {
     setConfirming(false)
     const payload: RoomServiceRequest = {
-      guestId: '',
-      sessionId: '',
+      guestId: guestCtx.guestId,
+      sessionId: guestCtx.sessionId,
       roomNumber: Number(roomNumber),
       items: cart.map(({ itemId, name, quantity, unitPrice }) => ({
         itemId,
@@ -174,7 +189,7 @@ export function QRRoomServiceView() {
       mode: 'QR_ROOM_SERVICE',
     }
     await run(payload)
-  }, [run, roomNumber, cart, notes, qrToken])
+  }, [run, roomNumber, cart, notes, qrToken, guestCtx.guestId, guestCtx.sessionId])
 
   async function refreshStatus() {
     if (!orderData) return
@@ -457,11 +472,13 @@ export function QRRoomServiceView() {
                   min={1}
                   required
                   placeholder="e.g. 214"
-                  hint="Where should we deliver?"
+                  hint={verifiedRoom ? 'Room verified from QR code' : 'Where should we deliver?'}
                   value={roomNumber}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
                     setRoomNumber(event.target.value)
                   }
+                  readOnly={!!verifiedRoom}
+                  disabled={!!verifiedRoom}
                 />
                 <Textarea
                   name="notes"

@@ -93,5 +93,13 @@ function createSchema(database: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_orders_guest
       ON orders (guest_id, session_id, room_number);
+
+    CREATE TABLE IF NOT EXISTS rooms (
+      room_number INTEGER PRIMARY KEY,
+      qr_token TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `)
 }

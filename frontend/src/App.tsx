@@ -1,25 +1,142 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { AIConciergeView } from '@/modes/concierge/AIConciergeView'
 import { QRRoomServiceView } from '@/modes/room-service/QRRoomServiceView'
 import { LateCheckoutView } from '@/modes/late-checkout/LateCheckoutView'
 import { UnifiedRouterView } from '@/modes/unified/UnifiedRouterView'
 import { StaffOrdersView } from '@/modes/staff/StaffOrdersView'
+import { QRManagementView } from '@/modes/admin/QRManagementView'
 import { NotFound } from '@/components/state/NotFound'
+import { Card } from '@/components/ui/Card'
+import { LoadingState } from '@/components/state/LoadingState'
+import { ErrorState } from '@/components/state/ErrorState'
+import { initGuestSession } from '@/api/mockTransport'
+import {
+  GuestContext,
+  saveGuestContext,
+  loadGuestContext,
+  type GuestContextValue,
+} from '@/context/GuestContext'
+
+/**
+ * Root landing handler: intercepts QR code scan URLs (/?token=...&room=...),
+ * validates the token server-side, populates GuestContext, and redirects.
+ * URLs without token params go straight to the unified view.
+ */
+function RootLanding() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const qrToken = searchParams.get('token') ?? ''
+  const roomFromUrl = searchParams.get('room') ?? ''
+
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!qrToken) {
+      navigate('/', { replace: true })
+      return
+    }
+
+    // Check for existing valid context
+    const existing = loadGuestContext()
+    if (existing && existing.qrToken === qrToken) {
+      navigate('/', { replace: true })
+      return
+    }
+
+    const roomNumber = Number(roomFromUrl)
+    if (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999) {
+      setError('Invalid room number in QR code.')
+      return
+    }
+
+    let cancelled = false
+
+    async function initSession() {
+      const result = await initGuestSession(qrToken, roomNumber)
+      if (cancelled) return
+
+      if (result.status === 'error') {
+        setError(result.message)
+        return
+      }
+
+      const ctx: GuestContextValue = {
+        roomNumber: (result.data?.roomId as number) ?? roomNumber,
+        guestId: (result.data?.guestId as string) ?? '',
+        sessionId: (result.data?.sessionId as string) ?? '',
+        qrToken,
+      }
+
+      saveGuestContext(ctx)
+      navigate('/', { replace: true })
+    }
+
+    void initSession()
+    return () => { cancelled = true }
+  }, [qrToken, roomFromUrl, navigate])
+
+  if (error) {
+    return (
+      <section className="mode-page">
+        <Card>
+          <ErrorState title="QR code error" message={error} />
+        </Card>
+      </section>
+    )
+  }
+
+  if (qrToken) {
+    return (
+      <section className="mode-page">
+        <Card>
+          <LoadingState label="Verifying your room..." />
+        </Card>
+      </section>
+    )
+  }
+
+  return <UnifiedRouterView />
+}
+
+/**
+ * Wrapper that reads GuestContext from sessionStorage and provides it
+ * to all child routes. Runs once on mount.
+ */
+function GuestContextProvider({ children }: { children: React.ReactNode }) {
+  const [context] = useState<GuestContextValue>(() => {
+    return loadGuestContext() ?? {
+      roomNumber: null,
+      guestId: '',
+      sessionId: '',
+      qrToken: '',
+    }
+  })
+
+  return (
+    <GuestContext.Provider value={context}>
+      {children}
+    </GuestContext.Provider>
+  )
+}
 
 export default function App() {
   return (
     <BrowserRouter>
-      <AppShell>
-        <Routes>
-          <Route path="/" element={<UnifiedRouterView />} />
-          <Route path="/concierge" element={<AIConciergeView />} />
-          <Route path="/room-service" element={<QRRoomServiceView />} />
-          <Route path="/late-checkout" element={<LateCheckoutView />} />
-          <Route path="/staff-orders" element={<StaffOrdersView />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </AppShell>
+      <GuestContextProvider>
+        <AppShell>
+          <Routes>
+            <Route path="/" element={<RootLanding />} />
+            <Route path="/concierge" element={<AIConciergeView />} />
+            <Route path="/room-service" element={<QRRoomServiceView />} />
+            <Route path="/late-checkout" element={<LateCheckoutView />} />
+            <Route path="/staff-orders" element={<StaffOrdersView />} />
+            <Route path="/qr-management" element={<QRManagementView />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AppShell>
+      </GuestContextProvider>
     </BrowserRouter>
   )
 }

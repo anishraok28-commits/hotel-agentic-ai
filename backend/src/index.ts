@@ -15,6 +15,7 @@ import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
 import { createIdempotencyStore } from './middleware/idempotency.js'
 import { generateQrToken, verifyQrToken } from './session/qrToken.js'
 import { checkIn, getSession } from './session/store.js'
+import { createRoom, getRoomByNumber, getRoomByToken, listRooms, updateRoomActive } from './room/roomStore.js'
 import { getDatabase, closeDatabase } from './db/database.js'
 import type { EnvConfig } from './config/env.js'
 
@@ -75,7 +76,7 @@ function applyCorsHeaders(
     return false
   }
   res.setHeader('Access-Control-Allow-Origin', origin)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   res.setHeader('Access-Control-Max-Age', '600')
   return true
@@ -231,6 +232,33 @@ function route(
     return
   }
 
+  // Room management routes (Bearer-protected)
+  if (method === 'GET' && url === '/api/admin/rooms') {
+    if (!authorizePost(req, res, env, limiter)) return
+    handleListRooms(res)
+    return
+  }
+
+  if (method === 'POST' && url === '/api/admin/rooms') {
+    if (!authorizePost(req, res, env, limiter)) return
+    void handleCreateRoom(req, res, env)
+    return
+  }
+
+  const roomPatchMatch = url?.match(/^\/api\/admin\/rooms\/(\d+)$/)
+  if (method === 'PATCH' && roomPatchMatch) {
+    if (!authorizePost(req, res, env, limiter)) return
+    void handleUpdateRoom(req, res, Number(roomPatchMatch[1]))
+    return
+  }
+
+  const roomDeleteMatch = url?.match(/^\/api\/admin\/rooms\/(\d+)$/)
+  if (method === 'DELETE' && roomDeleteMatch) {
+    if (!authorizePost(req, res, env, limiter)) return
+    handleDeleteRoom(res, Number(roomDeleteMatch[1]))
+    return
+  }
+
   sendJson(res, 404, {
     status: 'error',
     requestId: crypto.randomUUID(),
@@ -349,6 +377,29 @@ async function handleGuestInit(
     return
   }
 
+  // Verify room exists and is active in the rooms table
+  const room = getRoomByNumber(roomNumber)
+  if (room && !room.active) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Room is not active',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
+  // Also verify the token matches the room's stored token (if room exists in DB)
+  if (room && room.qrToken !== qrToken) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'QR token does not match room',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
   // Check for existing active session for this room
   const existingSession = getSession(roomNumber)
   if (existingSession) {
@@ -448,6 +499,146 @@ async function handleVerifySession(
       sessionId: session.sessionId,
       expiresAt: new Date(session.expiresAt).toISOString(),
     },
+  })
+}
+
+function handleListRooms(res: ServerResponse): void {
+  const rooms = listRooms()
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Rooms listed',
+    data: { rooms },
+  })
+}
+
+async function handleCreateRoom(
+  req: IncomingMessage,
+  res: ServerResponse,
+  env: EnvConfig,
+): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const raw = await readBody(req)
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid JSON body',
+      code: 'INVALID_REQUEST',
+    })
+    return
+  }
+
+  const roomNumber = body.roomNumber as number | undefined
+  if (
+    typeof roomNumber !== 'number' || !Number.isInteger(roomNumber) ||
+    roomNumber < 1 || roomNumber > 9999
+  ) {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'roomNumber (integer 1-9999) required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  // Check for duplicate
+  const existing = getRoomByNumber(roomNumber)
+  if (existing) {
+    sendJson(res, 409, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: `Room ${roomNumber} already exists`,
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  // Generate a unique QR token for this room
+  const qrToken = generateQrToken(roomNumber, env.qrTokenSecret)
+  const room = createRoom(roomNumber, qrToken)
+
+  const frontendUrl = env.allowedOrigins[0] ?? 'http://localhost:5173'
+  const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(qrToken)}&room=${roomNumber}`
+
+  sendJson(res, 201, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: `Room ${roomNumber} created`,
+    data: { room, qrUrl },
+  })
+}
+
+async function handleUpdateRoom(
+  req: IncomingMessage,
+  res: ServerResponse,
+  roomNumber: number,
+): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const raw = await readBody(req)
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid JSON body',
+      code: 'INVALID_REQUEST',
+    })
+    return
+  }
+
+  const active = body.active as boolean | undefined
+  if (typeof active !== 'boolean') {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'active (boolean) required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  const room = updateRoomActive(roomNumber, active)
+  if (!room) {
+    sendJson(res, 404, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: `Room ${roomNumber} not found`,
+      code: 'NOT_FOUND',
+    })
+    return
+  }
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: `Room ${roomNumber} updated`,
+    data: { room },
+  })
+}
+
+function handleDeleteRoom(res: ServerResponse, roomNumber: number): void {
+  const room = getRoomByNumber(roomNumber)
+  if (!room) {
+    sendJson(res, 404, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: `Room ${roomNumber} not found`,
+      code: 'NOT_FOUND',
+    })
+    return
+  }
+
+  updateRoomActive(roomNumber, false)
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: `Room ${roomNumber} deactivated`,
+    data: { room: { ...room, active: false } },
   })
 }
 

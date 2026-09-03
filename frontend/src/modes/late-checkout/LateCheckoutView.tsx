@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
+import { useGuestContext } from '@/context/GuestContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -17,19 +18,33 @@ import type { LateCheckoutRequest } from '@/api/types'
 export function LateCheckoutView() {
   const mode = MODES.LATE_CHECKOUT
   const { result, run, reset } = useModeSubmit(mode.id)
+  const guestCtx = useGuestContext()
   const [searchParams] = useSearchParams()
-  const qrToken = searchParams.get('token') ?? ''
+  const qrTokenFromUrl = searchParams.get('token') ?? ''
   const roomFromQr = searchParams.get('room') ?? ''
-  const [roomNumber, setRoomNumber] = useState(roomFromQr)
+
+  // Use verified room from GuestContext if available, fall back to URL param
+  const verifiedRoom = guestCtx.roomNumber
+  const qrToken = guestCtx.qrToken || qrTokenFromUrl
+  const initialRoom = verifiedRoom ? String(verifiedRoom) : roomFromQr
+
+  const [roomNumber, setRoomNumber] = useState(initialRoom)
   const [hours, setHours] = useState<number>(2)
+
+  // When context changes, update room number
+  useEffect(() => {
+    if (verifiedRoom) {
+      setRoomNumber(String(verifiedRoom))
+    }
+  }, [verifiedRoom])
 
   const selected = LATE_CHECKOUT_OPTIONS.find((o) => o.hours === hours) ?? LATE_CHECKOUT_OPTIONS[0]
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const payload: LateCheckoutRequest = {
-      guestId: '',
-      sessionId: '',
+      guestId: guestCtx.guestId,
+      sessionId: guestCtx.sessionId,
       roomNumber: Number(roomNumber),
       requestedTime: buildRequestedTime(hours),
       qrToken: qrToken || undefined,
@@ -132,11 +147,13 @@ export function LateCheckoutView() {
                 min={1}
                 required
                 placeholder="e.g. 214"
-                hint="So the front desk can attach your request."
+                hint={verifiedRoom ? 'Room verified from QR code' : 'So the front desk can attach your request.'}
                 value={roomNumber}
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setRoomNumber(event.target.value)
                 }
+                readOnly={!!verifiedRoom}
+                disabled={!!verifiedRoom}
               />
               <div className="form__actions">
                 <Button type="submit">Request late checkout</Button>

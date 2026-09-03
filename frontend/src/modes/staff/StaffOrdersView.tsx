@@ -6,7 +6,7 @@ import { Icon } from '@/components/icon/Icon'
 import { LoadingState } from '@/components/state/LoadingState'
 import { ErrorState } from '@/components/state/ErrorState'
 import { EmptyState } from '@/components/state/EmptyState'
-import { listAdminOrders } from '@/api/mockTransport'
+import { listAdminOrders, updateOrderStatus } from '@/api/mockTransport'
 import type { StaffOrder, OrderStatus } from '@/api/types'
 import { formatPrice } from '@/utils/format'
 
@@ -18,6 +18,21 @@ const STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
 }
 
 const STATUS_FILTERS = ['all', 'NEW', 'PREPARING', 'READY', 'DELIVERED'] as const
+
+/** Next valid status for each current status (forward-only lifecycle). */
+const NEXT_STATUS: Readonly<Record<OrderStatus, OrderStatus | undefined>> = {
+  NEW: 'PREPARING',
+  PREPARING: 'READY',
+  READY: 'DELIVERED',
+  DELIVERED: undefined,
+}
+
+const NEXT_STATUS_LABEL: Readonly<Record<OrderStatus, string>> = {
+  NEW: 'Start Preparing',
+  PREPARING: 'Mark Ready',
+  READY: 'Mark Delivered',
+  DELIVERED: '',
+}
 
 function formatTime(iso: string): string {
   try {
@@ -32,6 +47,8 @@ export function StaffOrdersView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<string>('all')
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -50,6 +67,25 @@ export function StaffOrdersView() {
   useEffect(() => {
     void load()
   }, [load])
+
+  async function handleAdvanceStatus(order: StaffOrder) {
+    const next = NEXT_STATUS[order.status]
+    if (!next) return
+    setUpdatingId(order.orderId)
+    setUpdateError(null)
+    try {
+      const result = await updateOrderStatus(order.orderId, next)
+      if (result.status === 'error') {
+        setUpdateError(result.message)
+      } else {
+        await load()
+      }
+    } catch {
+      setUpdateError('Failed to update order status.')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
 
   return (
     <section className="mode-page">
@@ -84,6 +120,18 @@ export function StaffOrdersView() {
         </div>
       </Card>
 
+      {updateError ? (
+        <Card>
+          <ErrorState title="Status update failed" message={updateError}>
+            <div className="state__actions">
+              <Button variant="secondary" onClick={() => setUpdateError(null)}>
+                Dismiss
+              </Button>
+            </div>
+          </ErrorState>
+        </Card>
+      ) : null}
+
       {loading ? (
         <Card>
           <LoadingState label="Loading orders..." />
@@ -113,36 +161,58 @@ export function StaffOrdersView() {
 
       {!loading && !error && orders.length > 0 ? (
         <div className="staff-orders">
-          {orders.map((order) => (
-            <Card key={order.orderId}>
-              <div className="staff-order">
-                <div className="staff-order__header">
-                  <span className="staff-order__room">Room {order.roomNumber}</span>
-                  <span className="order-status-badge" data-status={order.status}>
-                    {STATUS_LABELS[order.status]}
-                  </span>
+          {orders.map((order) => {
+            const nextStatus = NEXT_STATUS[order.status]
+            return (
+              <Card key={order.orderId}>
+                <div className="staff-order">
+                  <div className="staff-order__header">
+                    <div className="staff-order__header-left">
+                      <span className="staff-order__room">Room {order.roomNumber}</span>
+                      <span className="staff-order__id">Order {order.orderId.slice(0, 8)}...</span>
+                    </div>
+                    <span className="order-status-badge" data-status={order.status}>
+                      {STATUS_LABELS[order.status]}
+                    </span>
+                  </div>
+
+                  <ul className="staff-order__items">
+                    {order.items.map((item) => (
+                      <li key={item.itemId}>
+                        <span>{item.name} x{item.quantity}</span>
+                        <span>{formatPrice(item.unitPrice * item.quantity)}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {order.notes ? (
+                    <p className="staff-order__notes">Note: {order.notes}</p>
+                  ) : null}
+
+                  <div className="staff-order__footer">
+                    <span className="staff-order__total">{formatPrice(order.total)}</span>
+                    <span className="staff-order__time">{formatTime(order.createdAt)}</span>
+                  </div>
+
+                  {nextStatus ? (
+                    <div className="staff-order__actions">
+                      <Button
+                        size="sm"
+                        onClick={() => void handleAdvanceStatus(order)}
+                        disabled={updatingId === order.orderId}
+                      >
+                        {updatingId === order.orderId ? (
+                          'Updating...'
+                        ) : (
+                          NEXT_STATUS_LABEL[order.status]
+                        )}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
-
-                <ul className="staff-order__items">
-                  {order.items.map((item) => (
-                    <li key={item.itemId}>
-                      <span>{item.name} x{item.quantity}</span>
-                      <span>{formatPrice(item.unitPrice * item.quantity)}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {order.notes ? (
-                  <p className="staff-order__notes">Note: {order.notes}</p>
-                ) : null}
-
-                <div className="staff-order__footer">
-                  <span className="staff-order__total">{formatPrice(order.total)}</span>
-                  <span className="staff-order__time">{formatTime(order.createdAt)}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            )
+          })}
         </div>
       ) : null}
     </section>

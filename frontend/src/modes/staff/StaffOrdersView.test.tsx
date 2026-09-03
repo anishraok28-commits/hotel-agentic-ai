@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({
   listAdminOrders: vi.fn(),
+  updateOrderStatus: vi.fn(),
 }))
 
 vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: true,
   listAdminOrders: mocks.listAdminOrders,
+  updateOrderStatus: mocks.updateOrderStatus,
 }))
 
 import { StaffOrdersView } from './StaffOrdersView'
@@ -48,7 +50,14 @@ const SAMPLE_ORDERS = [
 describe('StaffOrdersView', () => {
   beforeEach(() => {
     mocks.listAdminOrders.mockReset()
+    mocks.updateOrderStatus.mockReset()
     mocks.listAdminOrders.mockResolvedValue({ orders: SAMPLE_ORDERS })
+    mocks.updateOrderStatus.mockResolvedValue({
+      status: 'accepted',
+      requestId: 'stub',
+      message: 'Updated',
+      data: { orderId: 'order-1', status: 'PREPARING', updatedAt: new Date().toISOString() },
+    })
   })
 
   it('renders the page header', () => {
@@ -110,7 +119,8 @@ describe('StaffOrdersView', () => {
     await screen.findByText(/Burger/)
 
     mocks.listAdminOrders.mockResolvedValue({ orders: [SAMPLE_ORDERS[1]] })
-    await user.click(screen.getByRole('button', { name: /Preparing/ }))
+    const filterGroup = screen.getByRole('group', { name: /Order status filter/ })
+    await user.click(within(filterGroup).getByRole('button', { name: /Preparing/ }))
 
     expect(await screen.findByText(/Pizza/)).toBeInTheDocument()
     expect(mocks.listAdminOrders).toHaveBeenCalledWith('PREPARING')
@@ -178,5 +188,81 @@ describe('StaffOrdersView', () => {
     await user.click(screen.getByRole('button', { name: /Try again/ }))
 
     expect(await screen.findByText(/Burger/)).toBeInTheDocument()
+  })
+
+  it('shows order IDs', async () => {
+    renderView()
+    await screen.findByText(/Burger/)
+    expect(screen.getByText(/Order order-1/)).toBeInTheDocument()
+    expect(screen.getByText(/Order order-2/)).toBeInTheDocument()
+  })
+
+  it('shows status advance buttons for non-terminal orders', async () => {
+    renderView()
+    await screen.findByText(/Burger/)
+    expect(screen.getByRole('button', { name: /Start Preparing/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Mark Ready/ })).toBeInTheDocument()
+  })
+
+  it('does not show advance button for delivered orders', async () => {
+    mocks.listAdminOrders.mockResolvedValue({
+      orders: [{
+        ...SAMPLE_ORDERS[0],
+        status: 'DELIVERED' as const,
+      }],
+    })
+    renderView()
+    await screen.findByText(/Burger/)
+    expect(screen.queryByRole('button', { name: /Mark/ })).not.toBeInTheDocument()
+  })
+
+  it('advances order status on button click and reloads', async () => {
+    const user = userEvent.setup()
+    mocks.listAdminOrders.mockResolvedValueOnce({ orders: [SAMPLE_ORDERS[0]] })
+    renderView()
+
+    await screen.findByText(/Burger/)
+    await user.click(screen.getByRole('button', { name: /Start Preparing/ }))
+
+    expect(mocks.updateOrderStatus).toHaveBeenCalledWith('order-1', 'PREPARING')
+    expect(await screen.findByText(/Burger/)).toBeInTheDocument()
+    expect(screen.getAllByText('New').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('shows error when status update fails', async () => {
+    const user = userEvent.setup()
+    mocks.updateOrderStatus.mockResolvedValueOnce({
+      status: 'error',
+      requestId: 'err',
+      message: 'Cannot transition from DELIVERED to PREPARING',
+      code: 'INVALID_REQUEST',
+    })
+    mocks.listAdminOrders.mockResolvedValueOnce({ orders: [SAMPLE_ORDERS[0]] })
+    renderView()
+
+    await screen.findByText(/Burger/)
+    await user.click(screen.getByRole('button', { name: /Start Preparing/ }))
+
+    expect(await screen.findByText('Status update failed')).toBeInTheDocument()
+  })
+
+  it('allows dismissing status update error', async () => {
+    const user = userEvent.setup()
+    mocks.updateOrderStatus.mockResolvedValueOnce({
+      status: 'error',
+      requestId: 'err',
+      message: 'Something went wrong',
+      code: 'INTERNAL_ERROR',
+    })
+    mocks.listAdminOrders.mockResolvedValueOnce({ orders: [SAMPLE_ORDERS[0]] })
+    renderView()
+
+    await screen.findByText(/Burger/)
+    await user.click(screen.getByRole('button', { name: /Start Preparing/ }))
+
+    await screen.findByText('Status update failed')
+    await user.click(screen.getByRole('button', { name: /Dismiss/ }))
+
+    expect(screen.queryByText('Status update failed')).not.toBeInTheDocument()
   })
 })

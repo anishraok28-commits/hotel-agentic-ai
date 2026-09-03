@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
+import { useGuestContext } from '@/context/GuestContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -28,11 +29,21 @@ type TimeOfDay = (typeof TIME_OPTIONS)[number]['value']
 export function AIConciergeView() {
   const mode = MODES.AI_CONCIERGE
   const { result, run, reset } = useModeSubmit(mode.id)
-  const [roomNumber, setRoomNumber] = useState('')
+  const guestCtx = useGuestContext()
+  const [roomNumber, setRoomNumber] = useState(
+    guestCtx.roomNumber ? String(guestCtx.roomNumber) : '',
+  )
   const [request, setRequest] = useState('')
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('any')
   const [category, setCategory] = useState<string | null>(null)
   const [showMore, setShowMore] = useState(false)
+
+  // When context changes, update room number
+  useEffect(() => {
+    if (guestCtx.roomNumber) {
+      setRoomNumber(String(guestCtx.roomNumber))
+    }
+  }, [guestCtx.roomNumber])
 
   const visibleCategories = showMore
     ? [...PRIMARY_CATEGORIES, ...MORE_CATEGORIES]
@@ -59,8 +70,8 @@ export function AIConciergeView() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const payload: ConciergeRequest = {
-      guestId: '',
-      sessionId: '',
+      guestId: guestCtx.guestId,
+      sessionId: guestCtx.sessionId,
       roomNumber: Number(roomNumber),
       request: request.trim(),
       mode: 'AI_CONCIERGE',
@@ -171,11 +182,13 @@ export function AIConciergeView() {
                 min={1}
                 required
                 placeholder="e.g. 214"
-                hint="So we know where to find you."
+                hint={guestCtx.roomNumber ? 'Room verified from QR code' : 'So we know where to find you.'}
                 value={roomNumber}
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setRoomNumber(event.target.value)
                 }
+                readOnly={!!guestCtx.roomNumber}
+                disabled={!!guestCtx.roomNumber}
               />
               <Textarea
                 name="request"
