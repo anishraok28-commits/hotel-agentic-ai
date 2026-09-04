@@ -17,7 +17,7 @@ import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
 import { createIdempotencyStore } from './middleware/idempotency.js'
 import { generateQrToken, verifyQrToken } from './session/qrToken.js'
 import { checkIn, getSession } from './session/store.js'
-import { createRoom, getRoomByNumber, getRoomByToken, listRooms, updateRoomActive } from './room/roomStore.js'
+import { createRoom, getRoomByNumber, listRooms, updateRoomActive } from './room/roomStore.js'
 import { getDatabase, closeDatabase } from './db/database.js'
 import type { EnvConfig } from './config/env.js'
 

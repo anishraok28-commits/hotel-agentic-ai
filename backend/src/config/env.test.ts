@@ -11,6 +11,7 @@ describe('env config', () => {
     delete process.env.MAKE_LATE_CHECKOUT_WEBHOOK_URL
     delete process.env.PORT
     delete process.env.ENV
+    delete process.env.NODE_ENV
     delete process.env.SERVICE_TOKEN
     delete process.env.RATE_LIMIT_WINDOW
     delete process.env.RATE_LIMIT_MAX
@@ -84,9 +85,9 @@ describe('env config', () => {
     expect(config.nodeEnv).toBe('local')
   })
 
-  it('reads ENV from environment', () => {
+  it('reads NODE_ENV from environment', () => {
     setRequired()
-    process.env.ENV = 'production'
+    process.env.NODE_ENV = 'production'
 
     const config = loadEnv()
     expect(config.nodeEnv).toBe('production')

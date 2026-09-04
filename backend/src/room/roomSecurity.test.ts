@@ -14,7 +14,7 @@ import { closeDatabase, getDatabase } from '../db/database.js'
 import { generateQrToken, verifyQrToken } from '../session/qrToken.js'
 import { checkIn, getSession, verifySession } from '../session/store.js'
 import { createRoom, getRoomByNumber, getRoomByToken, clearRooms, updateRoomActive } from '../room/roomStore.js'
-import { createOrder, getOrder, listOrders, getOrdersByGuest } from '../order/store.js'
+import { createOrder, listOrders, getOrdersByGuest } from '../order/store.js'
 
 const SECRET = 'test-qr-secret'
 

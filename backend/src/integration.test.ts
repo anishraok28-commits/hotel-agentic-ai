@@ -1052,6 +1052,128 @@ describe('Order status query (guest-authenticated)', () => {
   })
 })
 
+describe('Session recovery (order status after session loss)', () => {
+  async function createOrderAndGetId(): Promise<{
+    orderId: string
+    guestId: string
+    sessionId: string
+    qrToken: string
+  }> {
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+
+    const roomServiceRes = await request('POST', '/api/room-service', {
+      'X-Idempotency-Key': crypto.randomUUID(),
+    }, {
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken: checkInBody.data.qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    const orderBody = JSON.parse(roomServiceRes.body)
+
+    return {
+      orderId: orderBody.data.orderId,
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      qrToken: checkInBody.data.qrToken,
+    }
+  }
+
+  it('allows status check after session is deleted (simulates server restart)', async () => {
+    const { orderId, guestId, sessionId, qrToken } = await createOrderAndGetId()
+
+    // Delete the session to simulate server restart / data loss
+    const db = getDatabase(':memory:')
+    db.prepare('DELETE FROM sessions WHERE room_id = ?').run(304)
+
+    // Status check should still work via order ownership recovery
+    const res = await request('POST', '/api/order/status', {}, {
+      orderId,
+      guestId,
+      sessionId,
+      qrToken,
+    })
+    expect(res.status).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data.orderId).toBe(orderId)
+    expect(body.data.status).toBe('NEW')
+  })
+
+  it('rejects status check with wrong guestId after session loss', async () => {
+    const { orderId, sessionId, qrToken } = await createOrderAndGetId()
+
+    // Delete the session
+    const db = getDatabase(':memory:')
+    db.prepare('DELETE FROM sessions WHERE room_id = ?').run(304)
+
+    // Wrong guestId should fail
+    const res = await request('POST', '/api/order/status', {}, {
+      orderId,
+      guestId: 'wrong-guest-id',
+      sessionId,
+      qrToken,
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('rejects status check with wrong sessionId after session loss', async () => {
+    const { orderId, guestId, qrToken } = await createOrderAndGetId()
+
+    // Delete the session
+    const db = getDatabase(':memory:')
+    db.prepare('DELETE FROM sessions WHERE room_id = ?').run(304)
+
+    // Wrong sessionId should fail
+    const res = await request('POST', '/api/order/status', {}, {
+      orderId,
+      guestId,
+      sessionId: 'wrong-session-id',
+      qrToken,
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('rejects status check for wrong room after session loss', async () => {
+    const { orderId, guestId, sessionId } = await createOrderAndGetId()
+
+    // Delete the session
+    const db = getDatabase(':memory:')
+    db.prepare('DELETE FROM sessions WHERE room_id = ?').run(304)
+
+    // Generate a QR token for a different room
+    const wrongQrToken = generateQrToken(305, env.qrTokenSecret)
+
+    // Wrong room QR token should fail
+    const res = await request('POST', '/api/order/status', {}, {
+      orderId,
+      guestId,
+      sessionId,
+      qrToken: wrongQrToken,
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('still allows status check with valid session (normal path)', async () => {
+    const { orderId, guestId, sessionId, qrToken } = await createOrderAndGetId()
+
+    // Session still exists - normal path should work
+    const res = await request('POST', '/api/order/status', {}, {
+      orderId,
+      guestId,
+      sessionId,
+      qrToken,
+    })
+    expect(res.status).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.data.orderId).toBe(orderId)
+  })
+})
+
 describe('Admin order status update', () => {
   async function createOrderAsAdmin(): Promise<string> {
     const checkInRes = await request('POST', '/api/session/check-in', {

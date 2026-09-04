@@ -24,7 +24,7 @@ import {
   updateOrderStatus,
   listOrders,
 } from '../order/store.js'
-import type { OrderItem } from '../order/store.js'
+import type { OrderItem, Order } from '../order/store.js'
 
 const MAX_BODY_BYTES = 50 * 1024
 
@@ -329,6 +329,29 @@ export async function handleLateCheckout(
 }
 
 /**
+ * Send a successful order-status response. Shared by the normal session
+ * path and the session-recovery fallback to avoid duplicating the
+ * response shape.
+ */
+function sendOrderStatus(res: ServerResponse, order: Order): void {
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Order found',
+    data: {
+      orderId: order.orderId,
+      status: order.status,
+      roomNumber: order.roomNumber,
+      items: order.items,
+      total: order.total,
+      notes: order.notes,
+      createdAt: new Date(order.createdAt).toISOString(),
+      updatedAt: new Date(order.updatedAt).toISOString(),
+    },
+  })
+}
+
+/**
  * Guest order-status query. Verifies the caller owns the order via
  * QR token + active session before returning order information.
  */
@@ -389,16 +412,40 @@ export async function handleOrderStatus(
     p.guestId as string,
     p.sessionId as string,
   )
+
   if (!session) {
-    sendJson(res, 403, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'No active guest session for this room',
-      code: 'AUTH_REQUIRED',
-    })
+    // Session recovery: if session is missing (e.g., server restart), allow
+    // status check if the order exists and matches the request credentials.
+    const order = getOrder(orderId)
+    if (!order) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'No active guest session for this room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+
+    if (
+      order.roomNumber !== tokenResult.roomId ||
+      order.guestId !== p.guestId ||
+      order.sessionId !== p.sessionId
+    ) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'No active guest session for this room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+
+    sendOrderStatus(res, order)
     return
   }
 
+  // Normal path: session exists, verify order ownership.
   const order = getOrder(orderId)
   if (!order) {
     sendJson(res, 404, {
@@ -410,8 +457,11 @@ export async function handleOrderStatus(
     return
   }
 
-  // Ownership check: order must belong to the authenticated guest's room and session
-  if (order.roomNumber !== tokenResult.roomId) {
+  if (
+    order.roomNumber !== tokenResult.roomId ||
+    order.guestId !== p.guestId ||
+    order.sessionId !== p.sessionId
+  ) {
     sendJson(res, 404, {
       status: 'error',
       requestId: 'local-validation',
@@ -421,31 +471,7 @@ export async function handleOrderStatus(
     return
   }
 
-  if (order.guestId !== p.guestId || order.sessionId !== p.sessionId) {
-    sendJson(res, 404, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'Order not found',
-      code: 'NOT_FOUND',
-    })
-    return
-  }
-
-  sendJson(res, 200, {
-    status: 'ok',
-    requestId: crypto.randomUUID(),
-    message: 'Order found',
-    data: {
-      orderId: order.orderId,
-      status: order.status,
-      roomNumber: order.roomNumber,
-      items: order.items,
-      total: order.total,
-      notes: order.notes,
-      createdAt: new Date(order.createdAt).toISOString(),
-      updatedAt: new Date(order.updatedAt).toISOString(),
-    },
-  })
+  sendOrderStatus(res, order)
 }
 
 /**
