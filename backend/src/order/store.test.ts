@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { closeDatabase, getDatabase } from '../db/database.js'
 import {
   createOrder,
   getOrder,
@@ -15,6 +16,8 @@ const SAMPLE_ITEMS = [
 ]
 
 beforeEach(() => {
+  closeDatabase()
+  getDatabase(':memory:')
   clearOrders()
 })
 

@@ -3,8 +3,8 @@
  *
  * Uses better-sqlite3 for synchronous access matching the current code style.
  * DB_PATH env var controls storage:
- *   - ":memory:" (default) — ephemeral, lost on restart (for dev/test)
- *   - file path like "./data/hotel.db" — persistent across restarts
+ *   - file path like "./data/hotel.db" (default) — persistent across restarts
+ *   - ":memory:" — ephemeral, lost on restart (for dev/test)
  *
  * Tables are created on first open if they don't exist.
  */
@@ -22,7 +22,7 @@ let db: Database.Database | null = null
 export function getDatabase(dbPath?: string): Database.Database {
   if (db) return db
 
-  const resolvedPath = dbPath ?? process.env['DB_PATH'] ?? ':memory:'
+  const resolvedPath = dbPath ?? process.env['DB_PATH'] ?? './data/hotel.db'
 
   // Ensure parent directory exists for file-based databases
   if (resolvedPath !== ':memory:') {

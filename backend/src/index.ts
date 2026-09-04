@@ -6,6 +6,8 @@
  * The Frontend never sees webhook URLs.
  */
 
+import 'dotenv/config'
+
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { loadEnv } from './config/env.js'
 import { handleConcierge, handleRoomService, handleLateCheckout, handleOrderStatus, handleUpdateOrderStatus, handleListOrders } from './routes/handler.js'

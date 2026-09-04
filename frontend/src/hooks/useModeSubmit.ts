@@ -47,7 +47,7 @@ export function useModeSubmit(mode: FrontendMode) {
       }
 
       const guestContext = createGuestContext()
-      const enriched = { ...payload, ...guestContext }
+      const enriched = guestContext ? { ...payload, ...guestContext } : payload
 
       setResult({ phase: 'loading' })
       const response = await submit(route, enriched)

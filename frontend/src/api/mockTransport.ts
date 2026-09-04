@@ -382,14 +382,19 @@ export async function checkOrderStatus(
   }
 }
 
-/** Create a guest context for mock mode (backward compatibility). */
-export function createGuestContext(): GuestContext {
-  if (mockGuestContext) return mockGuestContext
-  mockGuestContext = {
-    roomId: 0,
-    guestId: `guest-${crypto.randomUUID()}`,
-    sessionId: `session-${crypto.randomUUID()}`,
-  }
+/**
+ * Return the current guest context, or null if none has been established.
+ *
+ * In real HTTP mode this is populated by initGuestSession() during the
+ * initial QR scan and cached here. After a browser refresh the module-level
+ * cache is gone, but the real credentials survive in sessionStorage via
+ * GuestContext — so returning null prevents fake random IDs from
+ * overwriting the real ones already present in the submission payload.
+ *
+ * In mock mode the context is always set by initGuestSession() before
+ * submission, so the null path is never reached during normal usage.
+ */
+export function createGuestContext(): GuestContext | null {
   return mockGuestContext
 }
 

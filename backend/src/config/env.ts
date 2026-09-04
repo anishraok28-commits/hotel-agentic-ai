@@ -87,6 +87,6 @@ export function loadEnv(): EnvConfig {
       'dev-qr-secret-do-not-use-in-production',
     ),
     sessionTtlHours: optionalIntEnv('SESSION_TTL_HOURS', 24),
-    dbPath: optionalEnv('DB_PATH', ':memory:'),
+    dbPath: optionalEnv('DB_PATH', './data/hotel.db'),
   }
 }

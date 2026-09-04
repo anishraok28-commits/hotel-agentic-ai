@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { closeDatabase, getDatabase } from '../db/database.js'
 import { checkIn, getSession, checkOut, verifySession, clearSessions } from './store.js'
 
 describe('session store', () => {
   beforeEach(() => {
+    closeDatabase()
+    getDatabase(':memory:')
     clearSessions()
   })
 

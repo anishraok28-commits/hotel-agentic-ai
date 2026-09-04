@@ -372,6 +372,7 @@ let server: ReturnType<typeof createServer>
 let baseUrl: string
 
 beforeAll(async () => {
+  getDatabase(':memory:')
   const limiter = createRateLimiter(env.rateLimitWindowSeconds, env.rateLimitMax)
   server = createServer((req, res) => route(req, res, env, limiter))
   await new Promise<void>((resolve) => {

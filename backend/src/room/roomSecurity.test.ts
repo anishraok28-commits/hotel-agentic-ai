@@ -20,8 +20,8 @@ const SECRET = 'test-qr-secret'
 
 beforeEach(() => {
   closeDatabase()
-  // getDatabase() with no args creates :memory: DB and runs createSchema
-  getDatabase()
+  // getDatabase() with explicit :memory: for isolated tests
+  getDatabase(':memory:')
   clearRooms()
 })
 
