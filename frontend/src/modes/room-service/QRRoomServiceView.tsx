@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
-import { useGuestContext } from '@/context/GuestContext'
+import { useGuestContext, loadGuestContext } from '@/context/GuestContext'
 import { checkOrderStatus } from '@/api/mockTransport'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -108,9 +108,12 @@ export function QRRoomServiceView() {
   const [searchParams] = useSearchParams()
   const qrTokenFromUrl = searchParams.get('token') ?? ''
 
-  // Use verified room and token from GuestContext only (never from URL room param)
+  // Use verified room and token from GuestContext only (never from URL room param).
+  // Also check sessionStorage directly as a fallback: the React context may not
+  // have hydrated yet when the component first renders after a page refresh.
   const verifiedRoom = guestCtx.roomNumber
-  const qrToken = guestCtx.qrToken || qrTokenFromUrl
+  const storedGuestCtx = loadGuestContext()
+  const qrToken = guestCtx.qrToken || storedGuestCtx?.qrToken || qrTokenFromUrl
   const initialRoom = verifiedRoom !== null ? String(verifiedRoom) : ''
 
   const [filter, setFilter] = useState<FilterId>('all')
