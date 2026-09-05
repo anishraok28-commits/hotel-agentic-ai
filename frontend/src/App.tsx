@@ -8,6 +8,12 @@ import { UnifiedRouterView } from '@/modes/unified/UnifiedRouterView'
 import { StaffOrdersView } from '@/modes/staff/StaffOrdersView'
 import { QRManagementView } from '@/modes/admin/QRManagementView'
 import { NotFound } from '@/components/state/NotFound'
+import { FeedbackCapture } from '@/modes/internal/FeedbackCapture'
+import { PrivacyPolicy } from '@/modes/internal/PrivacyPolicy'
+import { TermsOfService } from '@/modes/internal/TermsOfService'
+import { PilotChecklist } from '@/modes/internal/PilotChecklist'
+import { TeamRoles } from '@/modes/internal/TeamRoles'
+import { BusinessReadiness } from '@/modes/internal/BusinessReadiness'
 import { Card } from '@/components/ui/Card'
 import { LoadingState } from '@/components/state/LoadingState'
 import { ErrorState } from '@/components/state/ErrorState'
@@ -161,6 +167,12 @@ export default function App() {
             <Route path="/late-checkout" element={<LateCheckoutView />} />
             <Route path="/staff-orders" element={<StaffOrdersView />} />
             <Route path="/qr-management" element={<QRManagementView />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/internal/feedback" element={<FeedbackCapture />} />
+            <Route path="/internal/pilot-checklist" element={<PilotChecklist />} />
+            <Route path="/internal/team-roles" element={<TeamRoles />} />
+            <Route path="/internal/business-readiness" element={<BusinessReadiness />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppShell>

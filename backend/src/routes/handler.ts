@@ -25,6 +25,7 @@ import {
   listOrders,
 } from '../order/store.js'
 import type { OrderItem, Order } from '../order/store.js'
+import { createFeedback, listFeedback } from '../feedback/feedbackStore.js'
 
 const MAX_BODY_BYTES = 50 * 1024
 
@@ -606,5 +607,81 @@ export async function handleListOrders(
     requestId: crypto.randomUUID(),
     message: `${orders.length} order(s) found`,
     data: { orders },
+  })
+}
+
+/**
+ * Internal feedback capture. Admin Bearer-protected.
+ * Stores hotel owner/staff feedback after pilot conversations.
+ */
+export async function handleCreateFeedback(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const raw = await readBody(req)
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid JSON body',
+      code: 'INVALID_REQUEST',
+    })
+    return
+  }
+
+  const hotelName = body.hotelName as string | undefined
+  const contactName = body.contactName as string | undefined
+
+  if (typeof hotelName !== 'string' || hotelName.trim() === '') {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'hotelName is required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  if (typeof contactName !== 'string' || contactName.trim() === '') {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'contactName is required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  const entry = createFeedback({
+    hotelName: hotelName.trim(),
+    contactName: contactName.trim(),
+    whatWorked: typeof body.whatWorked === 'string' ? body.whatWorked : undefined,
+    whatFrustrated: typeof body.whatFrustrated === 'string' ? body.whatFrustrated : undefined,
+    whatMissing: typeof body.whatMissing === 'string' ? body.whatMissing : undefined,
+    whatWouldPayFor: typeof body.whatWouldPayFor === 'string' ? body.whatWouldPayFor : undefined,
+  })
+
+  sendJson(res, 201, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Feedback recorded',
+    data: { feedback: entry },
+  })
+}
+
+/**
+ * List stored feedback. Admin Bearer-protected.
+ */
+export function handleListFeedback(_req: IncomingMessage, res: ServerResponse): void {
+  const entries = listFeedback()
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: `${entries.length} feedback entr(y/ies) found`,
+    data: { feedback: entries },
   })
 }

@@ -101,5 +101,16 @@ function createSchema(database: Database.Database): void {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      hotel_name TEXT NOT NULL,
+      contact_name TEXT NOT NULL,
+      what_worked TEXT NOT NULL DEFAULT '',
+      what_frustrated TEXT NOT NULL DEFAULT '',
+      what_missing TEXT NOT NULL DEFAULT '',
+      what_would_pay_for TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
   `)
 }

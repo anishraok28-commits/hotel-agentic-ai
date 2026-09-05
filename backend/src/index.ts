@@ -10,7 +10,7 @@ import 'dotenv/config'
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { loadEnv } from './config/env.js'
-import { handleConcierge, handleRoomService, handleLateCheckout, handleOrderStatus, handleUpdateOrderStatus, handleListOrders } from './routes/handler.js'
+import { handleConcierge, handleRoomService, handleLateCheckout, handleOrderStatus, handleUpdateOrderStatus, handleListOrders, handleCreateFeedback, handleListFeedback } from './routes/handler.js'
 import { createRealTransport } from './webhook/realTransport.js'
 import { isAuthorized } from './middleware/auth.js'
 import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
@@ -258,6 +258,19 @@ function route(
   if (method === 'DELETE' && roomDeleteMatch) {
     if (!authorizePost(req, res, env, limiter)) return
     handleDeleteRoom(res, Number(roomDeleteMatch[1]))
+    return
+  }
+
+  // Internal feedback capture (Bearer-protected)
+  if (method === 'POST' && url === '/api/admin/feedback') {
+    if (!authorizePost(req, res, env, limiter)) return
+    void handleCreateFeedback(req, res)
+    return
+  }
+
+  if (method === 'GET' && url === '/api/admin/feedback') {
+    if (!authorizePost(req, res, env, limiter)) return
+    handleListFeedback(req, res)
     return
   }
 
