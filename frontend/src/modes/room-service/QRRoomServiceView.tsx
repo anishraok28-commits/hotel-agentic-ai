@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
@@ -144,6 +144,48 @@ export function QRRoomServiceView() {
     }
   }, [])
 
+  const refreshStatus = useCallback(async () => {
+    if (!orderData) return
+    setStatusLoading(true)
+    setStatusError(null)
+    try {
+      const res = await checkOrderStatus(orderData.orderId, auth ?? undefined)
+      if (res.status === 'error') {
+        setStatusError(res.message)
+      } else {
+        const s = res.data?.status
+        if (typeof s === 'string') {
+          setOrderStatus(s as OrderStatus)
+        }
+      }
+    } catch {
+      setStatusError('Could not check order status.')
+    } finally {
+      setStatusLoading(false)
+    }
+  }, [orderData, auth])
+
+  // Auto-poll order status every 15 seconds while not DELIVERED
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (!orderData || orderStatus === 'DELIVERED') {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+      return
+    }
+    pollingRef.current = setInterval(() => {
+      void refreshStatus()
+    }, 15_000)
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  }, [orderData, orderStatus, refreshStatus])
+
   const visibleItems = MENU.filter((item) => filter === 'all' || item.category === filter)
   const total = cartTotal(cart)
 
@@ -193,27 +235,6 @@ export function QRRoomServiceView() {
     await run(payload)
   }, [run, roomNumber, cart, notes, qrToken, guestCtx.guestId, guestCtx.sessionId])
 
-  async function refreshStatus() {
-    if (!orderData) return
-    setStatusLoading(true)
-    setStatusError(null)
-    try {
-      const res = await checkOrderStatus(orderData.orderId, auth ?? undefined)
-      if (res.status === 'error') {
-        setStatusError(res.message)
-      } else {
-        const s = res.data?.status
-        if (typeof s === 'string') {
-          setOrderStatus(s as OrderStatus)
-        }
-      }
-    } catch {
-      setStatusError('Could not check order status.')
-    } finally {
-      setStatusLoading(false)
-    }
-  }
-
   function resetForm() {
     reset()
     setCart([])
@@ -259,8 +280,8 @@ export function QRRoomServiceView() {
     <section className="mode-page">
       <PageHeader
         kicker={mode.title}
-        title="In-room dining"
-        subtitle="A taste of the hotel, delivered to your room. Browse the menu and place your order."
+        title="Room Service — Order to Your Room"
+        subtitle="Browse the menu and place your order. Everything you need during your stay."
       />
 
       {result.phase === 'loading' ? (

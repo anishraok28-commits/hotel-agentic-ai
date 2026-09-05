@@ -21,7 +21,7 @@ export function UnifiedRouterView() {
       <PageHeader
         kicker={unified.title}
         title={guestCtx.roomNumber ? `Room ${guestCtx.roomNumber}` : 'Welcome back'}
-        subtitle="Everything you need for your stay, in one place. Choose a service below."
+        subtitle="Everything you need during your stay. Choose a service below."
       />
 
       <div className="welcome welcome--hero">
@@ -29,9 +29,9 @@ export function UnifiedRouterView() {
           <Icon name="bed" size={28} />
         </span>
         <div>
-          <h2>Have a wonderful stay</h2>
+          <h2>One QR code. Booking, room service, and checkout — all in one guest experience.</h2>
           <p className="muted">
-            Use the concierge for recommendations, order room service, or extend your checkout -
+            Use the concierge for recommendations, order room service, or extend your checkout —
             all from your room.
           </p>
         </div>

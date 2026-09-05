@@ -30,7 +30,7 @@ export function AppShell({ children }: AppShellProps) {
       <main className="shell__main">{children}</main>
 
       <footer className="shell__footer">
-        <p>Hotel Automation Platform</p>
+        <p>Hotel Agentic AI — Guest Operations Platform</p>
       </footer>
     </div>
   )

@@ -86,7 +86,7 @@ describe('QRRoomServiceView', () => {
 
   it('renders the menu with categories and shows items', () => {
     renderView()
-    expect(screen.getByRole('heading', { name: 'In-room dining' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Room Service — Order to Your Room' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Drinks/ })).toBeInTheDocument()
     expect(screen.getByText('Club Sandwich')).toBeInTheDocument()
     expect(screen.getByText('Sparkling Water')).toBeInTheDocument()

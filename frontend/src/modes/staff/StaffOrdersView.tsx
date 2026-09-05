@@ -92,7 +92,7 @@ export function StaffOrdersView() {
       <PageHeader
         kicker="Staff"
         title="Active Orders"
-        subtitle="View and manage room-service orders."
+        subtitle="One place to manage guest requests and hotel operations."
       />
 
       <Card>
