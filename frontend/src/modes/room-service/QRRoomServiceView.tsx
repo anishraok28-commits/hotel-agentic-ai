@@ -32,7 +32,7 @@ type FilterId = (typeof FILTERS)[number]['id']
 const STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
   NEW: 'Order received',
   PREPARING: 'Being prepared',
-  READY: 'Ready for delivery',
+  READY: 'Ready — on its way',
   DELIVERED: 'Delivered',
 }
 
@@ -276,6 +276,34 @@ export function QRRoomServiceView() {
     }
   }
 
+  // When result transitions to error, check if the backend still returned
+  // order data (Make.com failed but the order was persisted in SQLite).
+  if (result.phase === 'error' && orderData === null) {
+    const extracted = extractOrderData({ data: result.error.data as Record<string, unknown> | undefined })
+    if (extracted) {
+      setOrderData(extracted)
+      setOrderStatus(extracted.status)
+
+      const respData = result.error.data as Record<string, unknown> | undefined
+      if (respData && typeof respData.guestId === 'string' && typeof respData.sessionId === 'string') {
+        guestCtx.updateSession(respData.guestId, respData.sessionId)
+      }
+
+      const authCtx: AuthContext = {
+        guestId: respData && typeof respData.guestId === 'string' ? respData.guestId : guestCtx.guestId,
+        sessionId: respData && typeof respData.sessionId === 'string' ? respData.sessionId : guestCtx.sessionId,
+        qrToken,
+      }
+      setAuth(authCtx)
+      try {
+        sessionStorage.setItem(ORDER_STORAGE_KEY, JSON.stringify({
+          ...extracted,
+          ...authCtx,
+        }))
+      } catch { /* storage full or unavailable */ }
+    }
+  }
+
   return (
     <section className="mode-page">
       <PageHeader
@@ -357,7 +385,7 @@ export function QRRoomServiceView() {
         </Card>
       ) : null}
 
-      {result.phase === 'error' ? (
+      {result.phase === 'error' && !orderData ? (
         <Card>
           <ErrorState title="Your order could not be placed" message={result.error.message}>
             <div className="state__actions">

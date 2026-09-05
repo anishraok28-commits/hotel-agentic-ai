@@ -30,6 +30,7 @@ export interface ApiErrorResponse {
   requestId: string
   message: string
   code: ApiErrorCode
+  data?: Record<string, unknown>
 }
 
 /** AIConcierge | BOOKING payload (docs/api-contract.md, section 4.2). */

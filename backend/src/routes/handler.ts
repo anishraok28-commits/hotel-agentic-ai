@@ -244,7 +244,20 @@ export async function handleRoomService(
     const statusCode = response.status === 'error' ? 502 : 202
 
     const clientResponse = response.status === 'error'
-      ? response
+      ? {
+          ...response,
+          data: {
+            ...response.data,
+            orderId: order.orderId,
+            status: order.status,
+            roomNumber: order.roomNumber,
+            items: sanitizedItems,
+            total,
+            createdAt: new Date(order.createdAt).toISOString(),
+            guestId,
+            sessionId,
+          },
+        }
       : {
           ...response,
           data: {
@@ -267,12 +280,26 @@ export async function handleRoomService(
 
     sendJson(res, statusCode, clientResponse)
   } catch {
-    sendJson(res, 502, {
-      status: 'error',
+    const errorResponse = {
+      status: 'error' as const,
       requestId: crypto.randomUUID(),
       message: 'Failed to forward request to automation layer',
-      code: 'AUTOMATION_FAILED',
-    })
+      code: 'AUTOMATION_FAILED' as const,
+      data: {
+        orderId: order.orderId,
+        status: order.status,
+        roomNumber: order.roomNumber,
+        items: sanitizedItems,
+        total,
+        createdAt: new Date(order.createdAt).toISOString(),
+        guestId,
+        sessionId,
+      },
+    }
+    if (idempotencyKey && idempotencyStore) {
+      idempotencyStore.set(idempotencyKey, 502, errorResponse)
+    }
+    sendJson(res, 502, errorResponse)
   }
 }
 
