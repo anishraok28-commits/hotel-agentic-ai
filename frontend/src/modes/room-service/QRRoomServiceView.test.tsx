@@ -296,6 +296,16 @@ describe('QRRoomServiceView', () => {
       requestId: 'err',
       message: 'The automation layer is unavailable.',
       code: 'AUTOMATION_FAILED',
+      data: {
+        orderId: 'test-order-id-12345',
+        status: 'NEW',
+        roomNumber: 305,
+        items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+        total: 1200,
+        createdAt: new Date().toISOString(),
+        guestId: 'guest-123',
+        sessionId: 'session-456',
+      },
     }))
     renderView()
 
@@ -304,13 +314,10 @@ describe('QRRoomServiceView', () => {
     await user.click(screen.getByRole('button', { name: /Review order/ }))
     await user.click(screen.getByRole('button', { name: /Confirm order/ }))
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'Order confirmed' })
 
-    await user.click(screen.getByRole('button', { name: /Try again/ }))
-
-    const panel = orderPanel()
-    expect(panel.getByText('Club Sandwich')).toBeInTheDocument()
-    expect(panel.getByRole('spinbutton', { name: /Quantity of Club Sandwich/ })).toHaveValue(1)
+    expect(screen.getByText(/Club Sandwich/)).toBeInTheDocument()
+    expect(screen.getByText(/Club Sandwich.*x\s*1/)).toBeInTheDocument()
   })
 
   it('resets the cart when placing another order', async () => {

@@ -30,6 +30,7 @@ export interface WebhookErrorResponse {
   readonly requestId: string
   readonly message: string
   readonly code: string
+  readonly data?: Record<string, unknown>
 }
 
 export type WebhookResponse = WebhookSuccessResponse | WebhookErrorResponse
