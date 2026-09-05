@@ -485,12 +485,14 @@ describe('POST with correct token reaches handler', () => {
     expect(body.requestId).toMatch(/^mock-/)
   })
 
-  it('guest room-service accepts without SERVICE_TOKEN', async () => {
+  it('guest room-service requires qrToken but not SERVICE_TOKEN', async () => {
+    const qrToken = generateQrToken(214, env.qrTokenSecret)
     const roomServicePayload = {
       guestId: 'guest-123',
       sessionId: 'session-456',
       roomNumber: 214,
       items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
       mode: 'QR_ROOM_SERVICE',
     }
     const res = await request('POST', '/api/room-service', {}, roomServicePayload)
@@ -499,7 +501,37 @@ describe('POST with correct token reaches handler', () => {
     expect(body.status).toBe('accepted')
   })
 
-  it('guest late-checkout accepts without SERVICE_TOKEN', async () => {
+  it('guest late-checkout requires qrToken but not SERVICE_TOKEN', async () => {
+    const qrToken = generateQrToken(214, env.qrTokenSecret)
+    const lateCheckoutPayload = {
+      guestId: 'guest-123',
+      sessionId: 'session-456',
+      roomNumber: 214,
+      requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      qrToken,
+      mode: 'LATE_CHECKOUT',
+    }
+    const res = await request('POST', '/api/late-checkout', {}, lateCheckoutPayload)
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    expect(body.status).toBe('accepted')
+  })
+
+  it('room-service rejects request without qrToken', async () => {
+    const roomServicePayload = {
+      guestId: 'guest-123',
+      sessionId: 'session-456',
+      roomNumber: 214,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      mode: 'QR_ROOM_SERVICE',
+    }
+    const res = await request('POST', '/api/room-service', {}, roomServicePayload)
+    expect(res.status).toBe(400)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('MISSING_FIELD')
+  })
+
+  it('late-checkout rejects request without qrToken', async () => {
     const lateCheckoutPayload = {
       guestId: 'guest-123',
       sessionId: 'session-456',
@@ -508,9 +540,9 @@ describe('POST with correct token reaches handler', () => {
       mode: 'LATE_CHECKOUT',
     }
     const res = await request('POST', '/api/late-checkout', {}, lateCheckoutPayload)
-    expect(res.status).toBe(202)
+    expect(res.status).toBe(400)
     const body = JSON.parse(res.body)
-    expect(body.status).toBe('accepted')
+    expect(body.code).toBe('MISSING_FIELD')
   })
 
   it('admin route /api/session/check-in still requires SERVICE_TOKEN', async () => {
@@ -732,7 +764,7 @@ describe('Session verification on Room Service', () => {
     expect(JSON.parse(res.body).code).toBe('AUTH_REQUIRED')
   })
 
-  it('rejects room-service with no active session', async () => {
+  it('auto-creates session and returns new credentials when session is missing', async () => {
     const { generateQrToken: gen } = await import('./session/qrToken.js')
     const qrToken = gen(304, env.qrTokenSecret)
 
@@ -744,7 +776,53 @@ describe('Session verification on Room Service', () => {
       qrToken,
       mode: 'QR_ROOM_SERVICE',
     })
-    expect(res.status).toBe(403)
+    // QR token proves room identity — session is auto-created on-the-fly
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    // Backend must return the fresh server-generated credentials so the
+    // frontend can update its stored guestId/sessionId.
+    expect(body.data.guestId).toBeDefined()
+    expect(body.data.sessionId).toBeDefined()
+    expect(body.data.guestId).not.toBe('guest-1')
+    expect(body.data.sessionId).not.toBe('session-1')
+  })
+
+  it('subsequent request after recovery uses new credentials', async () => {
+    const { generateQrToken: gen } = await import('./session/qrToken.js')
+    const qrToken = gen(304, env.qrTokenSecret)
+
+    // First request: session missing, recovery creates new credentials
+    const res1 = await request('POST', '/api/room-service', {
+      'X-Idempotency-Key': crypto.randomUUID(),
+    }, {
+      guestId: 'guest-old',
+      sessionId: 'session-old',
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(res1.status).toBe(202)
+    const body1 = JSON.parse(res1.body)
+    const newGuestId = body1.data.guestId as string
+    const newSessionId = body1.data.sessionId as string
+
+    // Second request: use the new credentials returned from recovery
+    const res2 = await request('POST', '/api/room-service', {
+      'X-Idempotency-Key': crypto.randomUUID(),
+    }, {
+      guestId: newGuestId,
+      sessionId: newSessionId,
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(res2.status).toBe(202)
+    const body2 = JSON.parse(res2.body)
+    // Second request should NOT trigger another recovery — same credentials returned
+    expect(body2.data.guestId).toBe(newGuestId)
+    expect(body2.data.sessionId).toBe(newSessionId)
   })
 
   it('rejects room-service with expired QR token', async () => {

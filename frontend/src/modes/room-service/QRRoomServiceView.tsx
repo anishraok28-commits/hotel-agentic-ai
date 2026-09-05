@@ -231,12 +231,18 @@ export function QRRoomServiceView() {
     if (extracted) {
       setOrderData(extracted)
       setOrderStatus(extracted.status)
+
+      // If the backend returned new session credentials (after session
+      // recovery), persist them so subsequent requests use the fresh IDs.
+      const respData = result.response.data as Record<string, unknown> | undefined
+      if (respData && typeof respData.guestId === 'string' && typeof respData.sessionId === 'string') {
+        guestCtx.updateSession(respData.guestId, respData.sessionId)
+      }
+
       // Persist active order and auth context for browser-refresh survival.
-      // Use the React context (guestCtx) which carries the verified session
-      // credentials from GuestContext, not the mockTransport module variable.
       const authCtx: AuthContext = {
-        guestId: guestCtx.guestId,
-        sessionId: guestCtx.sessionId,
+        guestId: respData && typeof respData.guestId === 'string' ? respData.guestId : guestCtx.guestId,
+        sessionId: respData && typeof respData.sessionId === 'string' ? respData.sessionId : guestCtx.sessionId,
         qrToken,
       }
       setAuth(authCtx)

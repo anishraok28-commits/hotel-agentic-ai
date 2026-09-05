@@ -15,7 +15,7 @@ import {
   validateLateCheckoutPayload,
 } from './validate.js'
 import { verifyQrToken } from '../session/qrToken.js'
-import { verifySession } from '../session/store.js'
+import { verifySession, checkIn } from '../session/store.js'
 import type { EnvConfig } from '../config/env.js'
 import type { IdempotencyStore } from '../middleware/idempotency.js'
 import {
@@ -164,9 +164,23 @@ export async function handleRoomService(
   }
 
   // Session verification: QR token + active session required.
+  // When env is present (production), qrToken is mandatory and verified.
+  // Without env (unit tests), auth is skipped — verification is impossible
+  // without qrTokenSecret.
   const p = payload as Record<string, unknown>
-  const qrToken = p.qrToken as string | undefined
-  if (env && qrToken) {
+  let guestId = p.guestId as string
+  let sessionId = p.sessionId as string
+  if (env) {
+    const qrToken = p.qrToken as string | undefined
+    if (typeof qrToken !== 'string' || qrToken.trim() === '') {
+      sendJson(res, 400, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'qrToken required',
+        code: 'MISSING_FIELD',
+      })
+      return
+    }
     const tokenResult = verifyQrToken(qrToken, env.qrTokenSecret)
     if (tokenResult === undefined || tokenResult.roomId !== (p.roomNumber as number)) {
       sendJson(res, 403, {
@@ -177,19 +191,15 @@ export async function handleRoomService(
       })
       return
     }
-    const session = verifySession(
-      p.roomNumber as number,
-      p.guestId as string,
-      p.sessionId as string,
-    )
+
+    // Track whether we create a new session so we can return the fresh
+    // server-generated credentials to the frontend.
+    let session = verifySession(tokenResult.roomId, guestId, sessionId)
     if (!session) {
-      sendJson(res, 403, {
-        status: 'error',
-        requestId: 'local-validation',
-        message: 'No active guest session for this room',
-        code: 'AUTH_REQUIRED',
-      })
-      return
+      guestId = crypto.randomUUID()
+      sessionId = crypto.randomUUID()
+      const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+      session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs)
     }
   }
 
@@ -206,13 +216,15 @@ export async function handleRoomService(
   const orderId = crypto.randomUUID()
   const requestId = crypto.randomUUID()
 
-  // Create the order in our store with status NEW
+  // Create the order in our store with status NEW.
+  // Use server-verified guestId/sessionId which may differ from client-supplied
+  // values when the session was auto-created during recovery.
   const order = createOrder({
     orderId,
     requestId,
     roomNumber: p.roomNumber as number,
-    guestId: p.guestId as string,
-    sessionId: p.sessionId as string,
+    guestId,
+    sessionId,
     items: sanitizedItems,
     total,
     notes: typeof p.notes === 'string' ? p.notes : undefined,
@@ -231,7 +243,6 @@ export async function handleRoomService(
     const response = await transport.send('ROOM_SERVICE', webhookPayload)
     const statusCode = response.status === 'error' ? 502 : 202
 
-    // Build the client response with order details
     const clientResponse = response.status === 'error'
       ? response
       : {
@@ -244,6 +255,8 @@ export async function handleRoomService(
             items: sanitizedItems,
             total,
             createdAt: new Date(order.createdAt).toISOString(),
+            guestId,
+            sessionId,
           },
         }
 
@@ -284,9 +297,23 @@ export async function handleLateCheckout(
   }
 
   // Session verification: QR token + active session required.
+  // When env is present (production), qrToken is mandatory and verified.
+  // Without env (unit tests), auth is skipped — verification is impossible
+  // without qrTokenSecret.
   const p = payload as Record<string, unknown>
-  const qrToken = p.qrToken as string | undefined
-  if (env && qrToken) {
+  let guestId = p.guestId as string
+  let sessionId = p.sessionId as string
+  if (env) {
+    const qrToken = p.qrToken as string | undefined
+    if (typeof qrToken !== 'string' || qrToken.trim() === '') {
+      sendJson(res, 400, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'qrToken required',
+        code: 'MISSING_FIELD',
+      })
+      return
+    }
     const tokenResult = verifyQrToken(qrToken, env.qrTokenSecret)
     if (tokenResult === undefined || tokenResult.roomId !== (p.roomNumber as number)) {
       sendJson(res, 403, {
@@ -297,19 +324,12 @@ export async function handleLateCheckout(
       })
       return
     }
-    const session = verifySession(
-      p.roomNumber as number,
-      p.guestId as string,
-      p.sessionId as string,
-    )
+    let session = verifySession(tokenResult.roomId, guestId, sessionId)
     if (!session) {
-      sendJson(res, 403, {
-        status: 'error',
-        requestId: 'local-validation',
-        message: 'No active guest session for this room',
-        code: 'AUTH_REQUIRED',
-      })
-      return
+      guestId = crypto.randomUUID()
+      sessionId = crypto.randomUUID()
+      const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+      session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs)
     }
   }
 
@@ -317,7 +337,13 @@ export async function handleLateCheckout(
     const webhookPayload = payload as WebhookPayload
     const response = await transport.send('LATE_CHECKOUT', webhookPayload)
     const statusCode = response.status === 'error' ? 502 : 202
-    sendJson(res, statusCode, response)
+    const clientResponse = response.status === 'error'
+      ? response
+      : {
+          ...response,
+          data: { ...response.data, guestId, sessionId },
+        }
+    sendJson(res, statusCode, clientResponse)
   } catch {
     sendJson(res, 502, {
       status: 'error',

@@ -37,6 +37,16 @@ export function LateCheckoutView() {
     }
   }, [verifiedRoom])
 
+  // If the backend returned new session credentials after recovery, persist them.
+  useEffect(() => {
+    if (result.phase === 'success') {
+      const respData = result.response.data as Record<string, unknown> | undefined
+      if (respData && typeof respData.guestId === 'string' && typeof respData.sessionId === 'string') {
+        guestCtx.updateSession(respData.guestId, respData.sessionId)
+      }
+    }
+  }, [result, guestCtx])
+
   const selected = LATE_CHECKOUT_OPTIONS.find((o) => o.hours === hours) ?? LATE_CHECKOUT_OPTIONS[0]
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {

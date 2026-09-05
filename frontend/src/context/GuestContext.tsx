@@ -20,6 +20,8 @@ export interface GuestContextValue {
   readonly sessionId: string
   /** The QR token used to establish this session. */
   readonly qrToken: string
+  /** Update session credentials after server-side recovery. */
+  readonly updateSession: (guestId: string, sessionId: string) => void
 }
 
 export const GuestContext = createContext<GuestContextValue>({
@@ -27,6 +29,7 @@ export const GuestContext = createContext<GuestContextValue>({
   guestId: '',
   sessionId: '',
   qrToken: '',
+  updateSession: () => {},
 })
 
 /** Hook to access the verified guest context. */
@@ -61,6 +64,7 @@ export function loadGuestContext(): GuestContextValue | null {
       guestId: parsed.guestId,
       sessionId: parsed.sessionId,
       qrToken: parsed.qrToken,
+      updateSession: () => {},
     }
   } catch {
     return null

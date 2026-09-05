@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { AIConciergeView } from '@/modes/concierge/AIConciergeView'
@@ -24,7 +24,7 @@ import {
  * validates the token server-side, populates GuestContext, and redirects.
  * URLs without token params go straight to the unified view.
  */
-function RootLanding() {
+export function RootLanding() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const qrToken = searchParams.get('token') ?? ''
@@ -40,7 +40,8 @@ function RootLanding() {
     // Check for existing valid context
     const existing = loadGuestContext()
     if (existing && existing.qrToken === qrToken) {
-      navigate('/', { replace: true })
+      const hasActiveOrder = !!sessionStorage.getItem('qr-room-service-active-order')
+      navigate(hasActiveOrder ? '/room-service' : '/', { replace: true })
       return
     }
 
@@ -60,6 +61,7 @@ function RootLanding() {
         guestId: (result.data?.guestId as string) ?? '',
         sessionId: (result.data?.sessionId as string) ?? '',
         qrToken,
+        updateSession: () => {},
       }
 
       saveGuestContext(ctx)
@@ -104,11 +106,13 @@ function RootLanding() {
  */
 export function GuestContextProvider({ children }: { children: React.ReactNode }) {
   const [context, setContext] = useState<GuestContextValue>(() => {
-    return loadGuestContext() ?? {
-      roomNumber: null,
-      guestId: '',
-      sessionId: '',
-      qrToken: '',
+    const stored = loadGuestContext()
+    return {
+      roomNumber: stored?.roomNumber ?? null,
+      guestId: stored?.guestId ?? '',
+      sessionId: stored?.sessionId ?? '',
+      qrToken: stored?.qrToken ?? '',
+      updateSession: () => {},
     }
   })
 
@@ -119,11 +123,27 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
   // based on props/state) — this fires at most once per mount.
   const stored = loadGuestContext()
   if (stored && stored.qrToken && !context.qrToken) {
-    setContext(stored)
+    setContext((prev) => ({
+      ...prev,
+      roomNumber: stored.roomNumber,
+      guestId: stored.guestId,
+      sessionId: stored.sessionId,
+      qrToken: stored.qrToken,
+    }))
   }
 
+  const updateSession = useCallback((guestId: string, sessionId: string) => {
+    setContext((prev) => {
+      const next = { ...prev, guestId, sessionId }
+      saveGuestContext(next)
+      return next
+    })
+  }, [])
+
+  const value = useMemo(() => ({ ...context, updateSession }), [context, updateSession])
+
   return (
-    <GuestContext.Provider value={context}>
+    <GuestContext.Provider value={value}>
       {children}
     </GuestContext.Provider>
   )

@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, act, waitFor } from '@testing-library/react'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { useGuestContext } from '@/context/GuestContext'
+
+const mocks = vi.hoisted(() => ({
+  initGuestSession: vi.fn(),
+}))
 
 vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: false,
+  initGuestSession: mocks.initGuestSession,
 }))
 
-import { GuestContextProvider } from './App'
+import { GuestContextProvider, RootLanding } from './App'
 
 function Consumer() {
   const ctx = useGuestContext()
@@ -112,5 +117,100 @@ describe('GuestContextProvider', () => {
     expect(screen.getByTestId('guestId')).toHaveTextContent('')
     expect(screen.getByTestId('sessionId')).toHaveTextContent('')
     expect(screen.getByTestId('roomNumber')).toHaveTextContent('null')
+  })
+})
+
+function AppRoot({ initialEntries }: { initialEntries: string[] }) {
+  return (
+    <MemoryRouter initialEntries={initialEntries}>
+      <GuestContextProvider>
+        <Routes>
+          <Route path="/" element={<RootLanding />} />
+          <Route path="/room-service" element={<div data-testid="room-service">Room Service</div>} />
+        </Routes>
+      </GuestContextProvider>
+    </MemoryRouter>
+  )
+}
+
+describe('RootLanding redirect', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    mocks.initGuestSession.mockReset()
+  })
+
+  it('navigates to /room-service when existing context + active order', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-abc',
+      sessionId: 'session-xyz',
+      qrToken: 'qr-token-101',
+    }))
+    sessionStorage.setItem('qr-room-service-active-order', JSON.stringify({
+      orderId: 'order-123',
+      status: 'NEW',
+    }))
+
+    render(<AppRoot initialEntries={['/?token=qr-token-101']} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('room-service')).toBeInTheDocument()
+    })
+  })
+
+  it('navigates to / when existing context + no active order', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-abc',
+      sessionId: 'session-xyz',
+      qrToken: 'qr-token-101',
+    }))
+
+    render(<AppRoot initialEntries={['/?token=qr-token-101']} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Room 101')).toBeInTheDocument()
+    })
+  })
+
+  it('restores GuestContext from sessionStorage on mount', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 444,
+      guestId: 'guest-restored',
+      sessionId: 'session-restored',
+      qrToken: 'restored-token',
+    }))
+
+    render(<AppRoot initialEntries={['/?token=restored-token']} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Room 444')).toBeInTheDocument()
+    })
+  })
+
+  it('restores active order from sessionStorage on redirect to /room-service', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 202,
+      guestId: 'guest-order',
+      sessionId: 'session-order',
+      qrToken: 'qr-token-202',
+    }))
+    sessionStorage.setItem('qr-room-service-active-order', JSON.stringify({
+      orderId: 'order-456',
+      status: 'PREPARING',
+      roomNumber: 202,
+      items: [{ itemId: 'menu.001', name: 'Burger', quantity: 1, unitPrice: 1500 }],
+      total: 1500,
+    }))
+
+    render(<AppRoot initialEntries={['/?token=qr-token-202']} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('room-service')).toBeInTheDocument()
+    })
+
+    const stored = JSON.parse(sessionStorage.getItem('qr-room-service-active-order')!)
+    expect(stored.orderId).toBe('order-456')
+    expect(stored.status).toBe('PREPARING')
   })
 })

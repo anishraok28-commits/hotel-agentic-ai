@@ -23,11 +23,13 @@ const defaultGuestContext: {
   guestId: string
   sessionId: string
   qrToken: string
+  updateSession: (guestId: string, sessionId: string) => void
 } = {
   roomNumber: null,
   guestId: '',
   sessionId: '',
   qrToken: '',
+  updateSession: () => {},
 }
 
 function renderView(contextOverrides?: Partial<typeof defaultGuestContext>) {
