@@ -305,6 +305,43 @@ export async function deleteRoom(
 }
 
 /**
+ * Reissue a room's QR token.
+ * In mock mode, generates a new mock token.
+ * In real mode, PATCHes /api/admin/rooms/:roomNumber/reissue-qr with Bearer auth.
+ */
+export async function reissueRoomQr(
+  roomNumber: number,
+): Promise<{ room: RoomData; qrUrl: string }> {
+  if (MOCK_API_ENABLED) {
+    await sleep(300)
+    const newQrToken = `mock-token-${roomNumber}-${Date.now()}`
+    mockRooms = mockRooms.map((r) =>
+      r.roomNumber === roomNumber ? { ...r, qrToken: newQrToken, updatedAt: Date.now() } : r,
+    )
+    const room = mockRooms.find((r) => r.roomNumber === roomNumber)
+    const frontendUrl = window.location.origin
+    const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(newQrToken)}&room=${roomNumber}`
+    return {
+      room: room ?? { roomNumber, qrToken: newQrToken, active: true, createdAt: Date.now(), updatedAt: Date.now() },
+      qrUrl,
+    }
+  }
+
+  const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}/reissue-qr`
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (appConfig.serviceToken) {
+    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  }
+
+  const response = await fetch(url, { method: 'PATCH', headers })
+  const body = (await response.json()) as { data?: { room?: RoomData; qrUrl?: string } }
+  return {
+    room: body.data?.room ?? { roomNumber, qrToken: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
+    qrUrl: body.data?.qrUrl ?? '',
+  }
+}
+
+/**
  * Check order status via the backend /api/order/status endpoint.
  * In mock mode, returns the current mock order state.
  */

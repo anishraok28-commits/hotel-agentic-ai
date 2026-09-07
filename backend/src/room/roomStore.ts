@@ -93,6 +93,20 @@ export function updateRoomActive(
   return getRoomByNumber(roomNumber)
 }
 
+/** Reissue a room's QR token. Replaces the existing token. */
+export function reissueQrToken(
+  roomNumber: number,
+  newQrToken: string,
+): Room | undefined {
+  const db = getDatabase()
+  const now = Date.now()
+  const result = db.prepare(
+    'UPDATE rooms SET qr_token = ?, updated_at = ? WHERE room_number = ?',
+  ).run(newQrToken, now, roomNumber)
+  if (result.changes === 0) return undefined
+  return getRoomByNumber(roomNumber)
+}
+
 /** Test helper: clear all rooms. */
 export function clearRooms(): void {
   const db = getDatabase()

@@ -1138,6 +1138,110 @@ a:hover {
 }
 
 /* ============================================================
+   Staff tabs navigation
+   ============================================================ */
+
+.staff-tabs {
+  margin-bottom: var(--space-5);
+}
+
+.staff-tabs__list {
+  display: flex;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.staff-tabs__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--color-text-soft);
+  font-weight: 500;
+  font-size: 0.95rem;
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.staff-tabs__link:hover {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.staff-tabs__link.is-active {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+/* Staff Rooms & QR view */
+.staff-rooms-qr__guest-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.staff-rooms-qr__guest-link:hover {
+  color: var(--color-primary-strong);
+  text-decoration: underline;
+}
+
+.staff-rooms-qr__back {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.staff-rooms-qr__back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-soft);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.staff-rooms-qr__back-link:hover {
+  color: var(--color-text);
+}
+
+/* QR State badges */
+.qr-state-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.qr-state-badge--generated {
+  background: rgba(124, 196, 161, 0.18);
+  color: var(--color-success);
+}
+
+.qr-state-badge--not-generated {
+  background: rgba(226, 183, 107, 0.18);
+  color: var(--color-warning);
+}
+
+.qr-state-badge--deactivated {
+  background: rgba(224, 142, 142, 0.18);
+  color: var(--color-danger);
+}
+
+/* ============================================================
    Responsive tweaks
    ============================================================ */
 
@@ -1360,4 +1464,96 @@ a:hover {
 
 .legal-content strong {
   color: var(--color-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* Staff Role Selector                                                  */
+/* ------------------------------------------------------------------ */
+
+.staff-role-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.staff-role-selector label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-soft);
+}
+
+.staff-role-selector__select {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.staff-role-selector__select:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Owner Dashboard                                                      */
+/* ------------------------------------------------------------------ */
+
+.owner-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.owner-dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.owner-dashboard__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0;
+}
+
+.metric-value {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}
+
+.metric-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-text-soft);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
 }

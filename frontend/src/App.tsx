@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams, useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { AIConciergeView } from '@/modes/concierge/AIConciergeView'
 import { QRRoomServiceView } from '@/modes/room-service/QRRoomServiceView'
 import { LateCheckoutView } from '@/modes/late-checkout/LateCheckoutView'
 import { UnifiedRouterView } from '@/modes/unified/UnifiedRouterView'
 import { StaffOrdersView } from '@/modes/staff/StaffOrdersView'
+import { StaffRoomsQRView } from '@/modes/staff/StaffRoomsQRView'
+import { StaffShell } from '@/modes/staff/StaffShell'
+import { OwnerDashboard } from '@/features/owner/OwnerDashboard'
 import { QRManagementView } from '@/modes/admin/QRManagementView'
 import { NotFound } from '@/components/state/NotFound'
 import { FeedbackCapture } from '@/modes/internal/FeedbackCapture'
@@ -165,7 +168,12 @@ export default function App() {
             <Route path="/concierge" element={<AIConciergeView />} />
             <Route path="/room-service" element={<QRRoomServiceView />} />
             <Route path="/late-checkout" element={<LateCheckoutView />} />
-            <Route path="/staff-orders" element={<StaffOrdersView />} />
+            <Route path="/staff-orders" element={<Navigate to="/staff/orders" replace />} />
+            <Route path="/staff" element={<StaffShell />}>
+              <Route path="orders" element={<StaffOrdersView />} />
+              <Route path="rooms-qr" element={<StaffRoomsQRView />} />
+              <Route path="dashboard" element={<OwnerDashboard />} />
+            </Route>
             <Route path="/qr-management" element={<QRManagementView />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />

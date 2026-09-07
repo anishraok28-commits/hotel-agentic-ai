@@ -17,7 +17,8 @@ import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
 import { createIdempotencyStore } from './middleware/idempotency.js'
 import { generateQrToken, verifyQrToken } from './session/qrToken.js'
 import { checkIn, getSession } from './session/store.js'
-import { createRoom, getRoomByNumber, listRooms, updateRoomActive } from './room/roomStore.js'
+import { createRoom, getRoomByNumber, listRooms, updateRoomActive, reissueQrToken } from './room/roomStore.js'
+import { getStaffByIdentifier } from './staff/staffRoleStore.js'
 import { getDatabase, closeDatabase } from './db/database.js'
 import type { EnvConfig } from './config/env.js'
 
@@ -234,6 +235,20 @@ function route(
     return
   }
 
+  // Staff role lookup (Bearer-protected)
+  if (method === 'GET' && url === '/api/admin/staff/me') {
+    if (!authorizePost(req, res, env, limiter)) return
+    handleStaffMe(req, res)
+    return
+  }
+
+  // Owner dashboard metrics (Bearer-protected)
+  if (method === 'GET' && url === '/api/admin/dashboard') {
+    if (!authorizePost(req, res, env, limiter)) return
+    handleDashboard(res)
+    return
+  }
+
   // Room management routes (Bearer-protected)
   if (method === 'GET' && url === '/api/admin/rooms') {
     if (!authorizePost(req, res, env, limiter)) return
@@ -258,6 +273,14 @@ function route(
   if (method === 'DELETE' && roomDeleteMatch) {
     if (!authorizePost(req, res, env, limiter)) return
     handleDeleteRoom(res, Number(roomDeleteMatch[1]))
+    return
+  }
+
+  // Room QR reissue (Bearer-protected)
+  const roomReissueMatch = url?.match(/^\/api\/admin\/rooms\/(\d+)\/reissue-qr$/)
+  if (method === 'PATCH' && roomReissueMatch) {
+    if (!authorizePost(req, res, env, limiter)) return
+    void handleReissueRoomQr(req, res, Number(roomReissueMatch[1]), env)
     return
   }
 
@@ -523,6 +546,79 @@ async function handleVerifySession(
   })
 }
 
+function handleStaffMe(req: IncomingMessage, res: ServerResponse): void {
+  // For the pilot, we use a default staff identifier since there's no login system.
+  // The frontend role is UI gating only; backend enforces role permissions on specific endpoints.
+  const defaultIdentifier = 'pilot-staff'
+  const staff = getStaffByIdentifier(defaultIdentifier)
+
+  if (!staff) {
+    sendJson(res, 200, {
+      status: 'ok',
+      requestId: crypto.randomUUID(),
+      message: 'No staff record found',
+      data: { staffId: null, name: null, role: null },
+    })
+    return
+  }
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Staff role retrieved',
+    data: { staffId: staff.id, name: staff.name, role: staff.role },
+  })
+}
+
+function handleDashboard(res: ServerResponse): void {
+  const db = getDatabase()
+
+  // Room service revenue (24h)
+  const revenueRow = db.prepare(
+    `SELECT COALESCE(SUM(total), 0) as revenue FROM orders WHERE created_at >= ?`,
+  ).get(Date.now() - 24 * 60 * 60 * 1000) as { revenue: number } | undefined
+  const roomServiceRevenue = revenueRow?.revenue ?? 0
+
+  // Active orders by status
+  const ordersByStatus = db.prepare(
+    `SELECT status, COUNT(*) as count FROM orders WHERE status IN ('NEW', 'PREPARING', 'READY') GROUP BY status`,
+  ).all() as Array<{ status: string; count: number }>
+  const activeOrders = {
+    NEW: 0,
+    PREPARING: 0,
+    READY: 0,
+  }
+  for (const row of ordersByStatus) {
+    if (row.status in activeOrders) {
+      activeOrders[row.status as keyof typeof activeOrders] = row.count
+    }
+  }
+
+  // Session-based room utilization
+  const activeSessions = db.prepare(
+    `SELECT COUNT(*) as count FROM sessions WHERE expires_at > ?`,
+  ).get(Date.now()) as { count: number } | undefined
+  const activeRooms = db.prepare(
+    `SELECT COUNT(*) as count FROM rooms WHERE active = 1`,
+  ).get() as { count: number } | undefined
+
+  const roomUtilization = {
+    activeSessions: activeSessions?.count ?? 0,
+    activeRooms: activeRooms?.count ?? 0,
+  }
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Dashboard metrics retrieved',
+    data: {
+      roomServiceRevenue,
+      activeOrders,
+      roomUtilization,
+    },
+  })
+}
+
 function handleListRooms(res: ServerResponse): void {
   const rooms = listRooms()
   sendJson(res, 200, {
@@ -660,6 +756,48 @@ function handleDeleteRoom(res: ServerResponse, roomNumber: number): void {
     requestId: crypto.randomUUID(),
     message: `Room ${roomNumber} deactivated`,
     data: { room: { ...room, active: false } },
+  })
+}
+
+async function handleReissueRoomQr(
+  req: IncomingMessage,
+  res: ServerResponse,
+  roomNumber: number,
+  env: EnvConfig,
+): Promise<void> {
+  const room = getRoomByNumber(roomNumber)
+  if (!room) {
+    sendJson(res, 404, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: `Room ${roomNumber} not found`,
+      code: 'NOT_FOUND',
+    })
+    return
+  }
+
+  // Generate a new QR token (reuses existing secure implementation)
+  const newQrToken = generateQrToken(roomNumber, env.qrTokenSecret)
+  const updatedRoom = reissueQrToken(roomNumber, newQrToken)
+
+  if (!updatedRoom) {
+    sendJson(res, 500, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Failed to reissue QR token',
+      code: 'INTERNAL_ERROR',
+    })
+    return
+  }
+
+  const frontendUrl = env.allowedOrigins[0] ?? 'http://localhost:5173'
+  const qrUrl = `${frontendUrl}/?token=${encodeURIComponent(newQrToken)}`
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: `Room ${roomNumber} QR token reissued`,
+    data: { room: updatedRoom, qrUrl },
   })
 }
 

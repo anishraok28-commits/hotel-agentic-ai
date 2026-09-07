@@ -112,5 +112,15 @@ function createSchema(database: Database.Database): void {
       what_would_pay_for TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS staff_users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      identifier TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL CHECK(role IN ('FRONT_DESK', 'KITCHEN', 'MANAGER', 'OWNER')),
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `)
 }
