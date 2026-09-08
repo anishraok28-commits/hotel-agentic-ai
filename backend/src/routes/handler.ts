@@ -16,6 +16,7 @@ import {
 } from './validate.js'
 import { verifyQrToken } from '../session/qrToken.js'
 import { verifySession, checkIn } from '../session/store.js'
+import { getRoomByNumber } from '../room/roomStore.js'
 import type { EnvConfig } from '../config/env.js'
 import type { IdempotencyStore } from '../middleware/idempotency.js'
 import {
@@ -193,6 +194,28 @@ export async function handleRoomService(
       return
     }
 
+    // Room verification: reject deactivated rooms and reissued tokens.
+    // Mirrors the checks in handleGuestInit (index.ts:425-444).
+    const room = getRoomByNumber(tokenResult.roomId)
+    if (room && !room.active) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Room is not active',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    if (room && room.qrToken !== qrToken) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'QR token does not match room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+
     // Track whether we create a new session so we can return the fresh
     // server-generated credentials to the frontend.
     let session = verifySession(tokenResult.roomId, guestId, sessionId)
@@ -352,6 +375,28 @@ export async function handleLateCheckout(
       })
       return
     }
+
+    // Room verification: reject deactivated rooms and reissued tokens.
+    const room = getRoomByNumber(tokenResult.roomId)
+    if (room && !room.active) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Room is not active',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    if (room && room.qrToken !== qrToken) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'QR token does not match room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+
     let session = verifySession(tokenResult.roomId, guestId, sessionId)
     if (!session) {
       guestId = crypto.randomUUID()
@@ -456,6 +501,27 @@ export async function handleOrderStatus(
       status: 'error',
       requestId: 'local-validation',
       message: 'Invalid, expired, or tampered QR token',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
+  // Room verification: reject deactivated rooms and reissued tokens.
+  const room = getRoomByNumber(tokenResult.roomId)
+  if (room && !room.active) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Room is not active',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+  if (room && room.qrToken !== qrToken) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'QR token does not match room',
       code: 'AUTH_REQUIRED',
     })
     return

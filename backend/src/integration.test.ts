@@ -8,6 +8,7 @@ import { createIdempotencyStore } from './middleware/idempotency.js'
 import { generateQrToken } from './session/qrToken.js'
 import { checkIn, clearSessions } from './session/store.js'
 import { clearOrders } from './order/store.js'
+import { createRoom,reissueQrToken, updateRoomActive, clearRooms } from './room/roomStore.js'
 import { getDatabase } from './db/database.js'
 import type { EnvConfig } from './config/env.js'
 
@@ -393,6 +394,7 @@ afterAll(async () => {
 beforeEach(() => {
   clearSessions()
   clearOrders()
+  clearRooms()
 })
 
 function request(
@@ -1419,5 +1421,193 @@ describe('QR room identity security', () => {
     // Same token cannot be used to init for room 102
     const res2 = await request('POST', '/api/guest/init', {}, { qrToken, roomNumber: 102 })
     expect(res2.status).toBe(403)
+  })
+})
+
+describe('QR reissue and deactivation security (handler room verification)', () => {
+  it('room-service rejects old QR token after reissue', async () => {
+    // 1. Create room and check in
+    const originalQrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, originalQrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+    const guestId = checkInBody.data.guestId
+    const sessionId = checkInBody.data.sessionId
+
+    // 2. Reissue — old token is now invalid.
+    //    Pass an explicit issuedAt offset so the reissued token is guaranteed
+    //    to differ from the original even when Date.now() resolution is coarse
+    //    (e.g. ~15ms on Windows), which would otherwise produce an identical token.
+    const originalIssuedAt = Date.now()
+    reissueQrToken(304, generateQrToken(304, env.qrTokenSecret, originalIssuedAt + 1))
+
+    // 3. Old token should be rejected by room-service
+    const res = await request('POST', '/api/room-service', {}, {
+      guestId,
+      sessionId,
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken: originalQrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+    expect(body.message).toContain('QR token does not match room')
+  })
+
+  it('late-checkout rejects old QR token after reissue', async () => {
+    const originalQrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, originalQrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+
+    const originalIssuedAt = Date.now()
+    reissueQrToken(304, generateQrToken(304, env.qrTokenSecret, originalIssuedAt + 1))
+
+    const res = await request('POST', '/api/late-checkout', {}, {
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      roomNumber: 304,
+      requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      qrToken: originalQrToken,
+      mode: 'LATE_CHECKOUT',
+    })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+  })
+
+  it('order-status rejects old QR token after reissue', async () => {
+    const originalQrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, originalQrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+    const guestId = checkInBody.data.guestId
+    const sessionId = checkInBody.data.sessionId
+
+    // Create an order first (uses current token from the room store)
+    const roomServiceRes = await request('POST', '/api/room-service', {}, {
+      guestId,
+      sessionId,
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken: originalQrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(roomServiceRes.status).toBe(202)
+    const orderId = JSON.parse(roomServiceRes.body).data.orderId
+
+    // Reissue — old token is now invalid
+    const orderStatusIssuedAt = Date.now()
+    reissueQrToken(304, generateQrToken(304, env.qrTokenSecret, orderStatusIssuedAt + 1))
+
+    const res = await request('POST', '/api/order/status', {}, {
+      guestId,
+      sessionId,
+      orderId,
+      qrToken: originalQrToken,
+    })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+  })
+
+  it('room-service rejects token for deactivated room', async () => {
+    const qrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, qrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+
+    // Deactivate room
+    updateRoomActive(304, false)
+
+    const res = await request('POST', '/api/room-service', {}, {
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+    expect(body.message).toContain('Room is not active')
+  })
+
+  it('late-checkout rejects token for deactivated room', async () => {
+    const qrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, qrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+
+    updateRoomActive(304, false)
+
+    const res = await request('POST', '/api/late-checkout', {}, {
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      roomNumber: 304,
+      requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      qrToken,
+      mode: 'LATE_CHECKOUT',
+    })
+    expect(res.status).toBe(403)
+    const body = JSON.parse(res.body)
+    expect(body.code).toBe('AUTH_REQUIRED')
+    expect(body.message).toContain('Room is not active')
+  })
+
+  it('room-service accepts valid current token', async () => {
+    const qrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, qrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+
+    // Use the token from the room store (same as check-in response)
+    const res = await request('POST', '/api/room-service', {}, {
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      roomNumber: 304,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    expect(body.status).toBe('accepted')
+  })
+
+  it('late-checkout accepts valid current token', async () => {
+    const qrToken = generateQrToken(304, env.qrTokenSecret)
+    createRoom(304, qrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', {
+      Authorization: `Bearer ${TOKEN}`,
+    }, { roomNumber: 304 })
+    const checkInBody = JSON.parse(checkInRes.body)
+
+    const res = await request('POST', '/api/late-checkout', {}, {
+      guestId: checkInBody.data.guestId,
+      sessionId: checkInBody.data.sessionId,
+      roomNumber: 304,
+      requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      qrToken,
+      mode: 'LATE_CHECKOUT',
+    })
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    expect(body.status).toBe('accepted')
   })
 })
