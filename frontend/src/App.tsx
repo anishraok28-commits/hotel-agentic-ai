@@ -27,6 +27,7 @@ import {
   loadGuestContext,
   type GuestContextValue,
 } from '@/context/GuestContext'
+import { StayProvider } from '@/context/StayContext'
 
 /**
  * Root landing handler: intercepts QR code scan URLs (/?token=...&room=...),
@@ -162,8 +163,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <GuestContextProvider>
-        <AppShell>
-          <Routes>
+        <StayProvider>
+          <AppShell>
+            <Routes>
             <Route path="/" element={<RootLanding />} />
             <Route path="/concierge" element={<AIConciergeView />} />
             <Route path="/room-service" element={<QRRoomServiceView />} />
@@ -183,7 +185,8 @@ export default function App() {
             <Route path="/internal/business-readiness" element={<BusinessReadiness />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </AppShell>
+          </AppShell>
+        </StayProvider>
       </GuestContextProvider>
     </BrowserRouter>
   )

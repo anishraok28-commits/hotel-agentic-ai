@@ -15,8 +15,9 @@ import {
   validateLateCheckoutPayload,
 } from './validate.js'
 import { verifyQrToken } from '../session/qrToken.js'
-import { verifySession, checkIn } from '../session/store.js'
+import { verifySession, checkIn, getSession } from '../session/store.js'
 import { getRoomByNumber } from '../room/roomStore.js'
+import { getActiveStay, createStay } from '../stay/store.js'
 import type { EnvConfig } from '../config/env.js'
 import type { IdempotencyStore } from '../middleware/idempotency.js'
 import {
@@ -216,14 +217,35 @@ export async function handleRoomService(
       return
     }
 
-    // Track whether we create a new session so we can return the fresh
-    // server-generated credentials to the frontend.
+    // Session verification: resolve the active session for this room.
+    // If the caller's credentials don't match (stale from another device,
+    // expired, server restart), resolve the existing session for the room
+    // rather than creating a fresh one. This keeps all devices synchronized.
     let session = verifySession(tokenResult.roomId, guestId, sessionId)
     if (!session) {
-      guestId = crypto.randomUUID()
-      sessionId = crypto.randomUUID()
-      const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
-      session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs)
+      const existing = getSession(tokenResult.roomId)
+      if (existing) {
+        guestId = existing.guestId
+        sessionId = existing.sessionId
+        session = existing
+      } else {
+        guestId = crypto.randomUUID()
+        sessionId = crypto.randomUUID()
+        const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+        session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs, qrToken)
+      }
+    }
+
+    // Ensure a stay record exists for cross-device stay resolution.
+    const activeStay = getActiveStay(tokenResult.roomId)
+    if (!activeStay) {
+      createStay({
+        stayId: crypto.randomUUID(),
+        roomNumber: tokenResult.roomId,
+        guestId,
+        sessionId,
+        qrToken,
+      })
     }
   }
 
@@ -399,10 +421,29 @@ export async function handleLateCheckout(
 
     let session = verifySession(tokenResult.roomId, guestId, sessionId)
     if (!session) {
-      guestId = crypto.randomUUID()
-      sessionId = crypto.randomUUID()
-      const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
-      session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs)
+      const existing = getSession(tokenResult.roomId)
+      if (existing) {
+        guestId = existing.guestId
+        sessionId = existing.sessionId
+        session = existing
+      } else {
+        guestId = crypto.randomUUID()
+        sessionId = crypto.randomUUID()
+        const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+        session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs, qrToken)
+      }
+    }
+
+    // Ensure a stay record exists.
+    const activeStay = getActiveStay(tokenResult.roomId)
+    if (!activeStay) {
+      createStay({
+        stayId: crypto.randomUUID(),
+        roomNumber: tokenResult.roomId,
+        guestId,
+        sessionId,
+        qrToken,
+      })
     }
   }
 

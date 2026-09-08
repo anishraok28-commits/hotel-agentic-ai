@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   createRoom: vi.fn(),
   updateRoom: vi.fn(),
   deleteRoom: vi.fn(),
+  reissueRoomQr: vi.fn(),
+  checkoutRoom: vi.fn(),
 }))
 
 vi.mock('@/api/mockTransport', () => ({
@@ -16,6 +18,8 @@ vi.mock('@/api/mockTransport', () => ({
   createRoom: mocks.createRoom,
   updateRoom: mocks.updateRoom,
   deleteRoom: mocks.deleteRoom,
+  reissueRoomQr: mocks.reissueRoomQr,
+  checkoutRoom: mocks.checkoutRoom,
 }))
 
 import { StaffRoomsQRView } from './StaffRoomsQRView'

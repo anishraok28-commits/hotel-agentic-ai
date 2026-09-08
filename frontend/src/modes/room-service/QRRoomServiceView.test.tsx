@@ -14,6 +14,7 @@ vi.mock('@/api/mockTransport', () => ({
   createGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
   submit: mocks.submit,
   checkOrderStatus: mocks.checkOrderStatus,
+  fetchCurrentStay: () => Promise.resolve({ stay: null, session: null, orders: [] }),
 }))
 
 import { QRRoomServiceView } from './QRRoomServiceView'

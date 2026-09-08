@@ -5,11 +5,12 @@ import { createMockTransport } from './webhook/mockTransport.js'
 import { isAuthorized } from './middleware/auth.js'
 import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
 import { createIdempotencyStore } from './middleware/idempotency.js'
-import { generateQrToken } from './session/qrToken.js'
-import { checkIn, clearSessions } from './session/store.js'
-import { clearOrders } from './order/store.js'
-import { createRoom,reissueQrToken, updateRoomActive, clearRooms } from './room/roomStore.js'
+import { generateQrToken, verifyQrToken } from './session/qrToken.js'
+import { checkIn, clearSessions, checkOut, getSession } from './session/store.js'
+import { clearOrders, getOrdersByGuest } from './order/store.js'
+import { createRoom,reissueQrToken, updateRoomActive, clearRooms, getRoomByNumber } from './room/roomStore.js'
 import { getDatabase } from './db/database.js'
+import { getActiveStay, createStay, checkoutStay, clearStays } from './stay/store.js'
 import type { EnvConfig } from './config/env.js'
 
 const env: EnvConfig = {
@@ -232,6 +233,19 @@ function route(
     return
   }
 
+  // GET /api/stay/current — cross-device stay state
+  if (method === 'GET' && url?.startsWith('/api/stay/current')) {
+    void handleStayCurrentIntegration(req, res, e)
+    return
+  }
+
+  // POST /api/session/checkout — staff-controlled checkout
+  if (method === 'POST' && url === '/api/session/checkout') {
+    if (!authorizePost(req, res, e, limiter)) return
+    void handleCheckoutIntegration(req, res)
+    return
+  }
+
   sendJson(res, 404, {
     status: 'error',
     requestId: crypto.randomUUID(),
@@ -369,6 +383,109 @@ async function handleVerifySession(
   sendJson(res, 200, { status: 'ok', requestId: crypto.randomUUID(), message: 'Session valid', data: { roomId: session.roomId, guestId: session.guestId, sessionId: session.sessionId, expiresAt: new Date(session.expiresAt).toISOString() } })
 }
 
+function handleStayCurrentIntegration(req: IncomingMessage, res: ServerResponse, e: EnvConfig): void {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+  const qrToken = url.searchParams.get('token') ?? ''
+
+  if (typeof qrToken !== 'string' || qrToken.trim() === '') {
+    sendJson(res, 400, { status: 'error', requestId: 'local-validation', message: 'token query parameter required', code: 'MISSING_FIELD' })
+    return
+  }
+
+  const tokenResult = verifyQrToken(qrToken, e.qrTokenSecret)
+  if (tokenResult === undefined) {
+    sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'Invalid, expired, or tampered QR token', code: 'AUTH_REQUIRED' })
+    return
+  }
+
+  const room = getRoomByNumber(tokenResult.roomId)
+  if (room && !room.active) {
+    sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'Room is not active', code: 'AUTH_REQUIRED' })
+    return
+  }
+  if (room && room.qrToken !== qrToken) {
+    sendJson(res, 403, { status: 'error', requestId: 'local-validation', message: 'QR token does not match room', code: 'AUTH_REQUIRED' })
+    return
+  }
+
+  const session = getSession(tokenResult.roomId)
+  if (!session) {
+    sendJson(res, 404, { status: 'error', requestId: 'local-validation', message: 'No active session for this room', code: 'NOT_FOUND' })
+    return
+  }
+
+  const activeStay = getActiveStay(tokenResult.roomId)
+  const orders = getOrdersByGuest(session.guestId, session.sessionId, tokenResult.roomId)
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Active stay retrieved',
+    data: {
+      stay: activeStay ? {
+        stayId: activeStay.stayId,
+        roomNumber: activeStay.roomNumber,
+        status: activeStay.status,
+        checkedInAt: new Date(activeStay.checkedInAt).toISOString(),
+        checkedOutAt: activeStay.checkedOutAt ? new Date(activeStay.checkedOutAt).toISOString() : null,
+      } : null,
+      session: {
+        roomId: session.roomId,
+        guestId: session.guestId,
+        sessionId: session.sessionId,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      },
+      orders: orders.map((o) => ({
+        orderId: o.orderId,
+        status: o.status,
+        roomNumber: o.roomNumber,
+        items: o.items,
+        total: o.total,
+        notes: o.notes,
+        createdAt: new Date(o.createdAt).toISOString(),
+        updatedAt: new Date(o.updatedAt).toISOString(),
+      })),
+    },
+  })
+}
+
+async function handleCheckoutIntegration(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const raw = await readBody(req)
+    body = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    sendJson(res, 400, { status: 'error', requestId: 'local-validation', message: 'Invalid JSON body', code: 'INVALID_REQUEST' })
+    return
+  }
+
+  const roomNumber = body.roomNumber as number | undefined
+  if (typeof roomNumber !== 'number' || !Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999) {
+    sendJson(res, 400, { status: 'error', requestId: 'local-validation', message: 'roomNumber required (integer 1-9999)', code: 'MISSING_FIELD' })
+    return
+  }
+
+  const activeStay = getActiveStay(roomNumber)
+  if (!activeStay) {
+    sendJson(res, 404, { status: 'error', requestId: 'local-validation', message: 'No active stay for this room', code: 'NOT_FOUND' })
+    return
+  }
+
+  checkoutStay(activeStay.stayId)
+  checkOut(roomNumber)
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Room checked out successfully',
+    data: {
+      roomNumber,
+      stayId: activeStay.stayId,
+      checkedOutAt: new Date().toISOString(),
+    },
+  })
+}
+
 let server: ReturnType<typeof createServer>
 let baseUrl: string
 
@@ -395,6 +512,7 @@ beforeEach(() => {
   clearSessions()
   clearOrders()
   clearRooms()
+  clearStays()
 })
 
 function request(
@@ -408,7 +526,7 @@ function request(
     const reqOpts = {
       hostname: '127.0.0.1',
       port: Number(new URL(baseUrl).port),
-      path: url.pathname,
+      path: url.pathname + url.search,
       method,
       headers,
     }
@@ -1609,5 +1727,257 @@ describe('QR reissue and deactivation security (handler room verification)', () 
     expect(res.status).toBe(202)
     const body = JSON.parse(res.body)
     expect(body.status).toBe('accepted')
+  })
+})
+
+// ─── STAY / CROSS-DEVICE / MODE-SWITCHING INTEGRATION TESTS ────────────────
+
+describe('Stay lifecycle and cross-device state', () => {
+  it('GET /api/stay/current returns active stay and session after check-in', async () => {
+    const qrToken = generateQrToken(501, env.qrTokenSecret)
+    createRoom(501, qrToken)
+    // Check-in via admin route
+    await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 501 })
+
+    const res = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    expect(res.status).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.status).toBe('ok')
+    expect(body.data.session).toBeDefined()
+    expect(body.data.session.roomId).toBe(501)
+    expect(body.data.orders).toEqual([])
+  })
+
+  it('GET /api/stay/current returns 403 for reissued token', async () => {
+    const oldToken = generateQrToken(502, env.qrTokenSecret)
+    createRoom(502, oldToken)
+    await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 502 })
+
+    // Reissue → old token should be rejected
+    reissueQrToken(502, generateQrToken(502, env.qrTokenSecret))
+
+    const res = await request('GET', `/api/stay/current?token=${encodeURIComponent(oldToken)}`)
+    expect(res.status).toBe(403)
+  })
+
+  it('GET /api/stay/current returns 404 when no session exists', async () => {
+    const qrToken = generateQrToken(503, env.qrTokenSecret)
+    createRoom(503, qrToken)
+
+    const res = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    expect(res.status).toBe(404)
+  })
+
+  it('POST /api/session/checkout closes stay and session', async () => {
+    const qrToken = generateQrToken(504, env.qrTokenSecret)
+    createRoom(504, qrToken)
+    // Check-in and place an order
+    await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 504 })
+    await request('POST', '/api/room-service', {}, {
+      guestId: 'guest-504', sessionId: 'session-504', roomNumber: 504,
+      items: [{ itemId: 'menu.001', name: 'Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken, mode: 'QR_ROOM_SERVICE',
+    })
+
+    // Checkout via staff endpoint
+    const checkoutRes = await request('POST', '/api/session/checkout', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 504 })
+    expect(checkoutRes.status).toBe(200)
+    const checkoutBody = JSON.parse(checkoutRes.body)
+    expect(checkoutBody.status).toBe('ok')
+    expect(checkoutBody.data.stayId).toBeDefined()
+
+    // Session should now be gone
+    const stayRes = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    expect(stayRes.status).toBe(404)
+  })
+
+  it('POST /api/session/checkout returns 404 for room with no stay', async () => {
+    const res = await request('POST', '/api/session/checkout', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 999 })
+    expect(res.status).toBe(404)
+  })
+
+  it('POST /api/session/checkout requires Bearer auth', async () => {
+    const res = await request('POST', '/api/session/checkout', {}, { roomNumber: 504 })
+    expect(res.status).toBe(401)
+  })
+})
+
+describe('Session recovery preserves existing session', () => {
+  it('room-service reuses existing session instead of creating a new one', async () => {
+    const qrToken = generateQrToken(601, env.qrTokenSecret)
+    createRoom(601, qrToken)
+
+    // Check-in via admin
+    const checkInRes = await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 601 })
+    const checkInBody = JSON.parse(checkInRes.body)
+    const { guestId, sessionId } = checkInBody.data
+
+    // Send room-service with mismatched guestId/sessionId (simulates recovery)
+    const res = await request('POST', '/api/room-service', {}, {
+      guestId: 'wrong-guest',
+      sessionId: 'wrong-session',
+      roomNumber: 601,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+
+    // Response should include the ORIGINAL guestId/sessionId, not the wrong ones
+    expect(body.data.guestId).toBe(guestId)
+    expect(body.data.sessionId).toBe(sessionId)
+  })
+
+  it('late-checkout reuses existing session instead of creating a new one', async () => {
+    const qrToken = generateQrToken(602, env.qrTokenSecret)
+    createRoom(602, qrToken)
+
+    const checkInRes = await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 602 })
+    const checkInBody = JSON.parse(checkInRes.body)
+    const { guestId, sessionId } = checkInBody.data
+
+    // Send late-checkout with mismatched guestId/sessionId
+    const res = await request('POST', '/api/late-checkout', {}, {
+      guestId: 'wrong-guest',
+      sessionId: 'wrong-session',
+      roomNumber: 602,
+      requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      qrToken,
+      mode: 'LATE_CHECKOUT',
+    })
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    expect(body.data.guestId).toBe(guestId)
+    expect(body.data.sessionId).toBe(sessionId)
+  })
+})
+
+describe('Stay record is created on first order', () => {
+  it('creates a stay record when room-service places first order', async () => {
+    const qrToken = generateQrToken(701, env.qrTokenSecret)
+    createRoom(701, qrToken)
+    await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 701 })
+
+    // Place first order
+    await request('POST', '/api/room-service', {}, {
+      guestId: 'guest-701', sessionId: 'session-701', roomNumber: 701,
+      items: [{ itemId: 'menu.001', name: 'Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken, mode: 'QR_ROOM_SERVICE',
+    })
+
+    // Verify stay exists via GET /api/stay/current
+    const stayRes = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    const stayBody = JSON.parse(stayRes.body)
+    expect(stayBody.data.stay).not.toBeNull()
+    expect(stayBody.data.stay.roomNumber).toBe(701)
+    expect(stayBody.data.stay.status).toBe('active')
+  })
+})
+
+describe('Mode switching reuses the same stay', () => {
+  it('room-service then late-checkout share the same stay', async () => {
+    const qrToken = generateQrToken(801, env.qrTokenSecret)
+    createRoom(801, qrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 801 })
+    const checkInBody = JSON.parse(checkInRes.body)
+    const { guestId, sessionId } = checkInBody.data
+
+    // Place room-service order
+    await request('POST', '/api/room-service', {}, {
+      guestId, sessionId, roomNumber: 801,
+      items: [{ itemId: 'menu.001', name: 'Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken, mode: 'QR_ROOM_SERVICE',
+    })
+
+    // Verify stay exists
+    const stay1 = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    const stayBody1 = JSON.parse(stay1.body)
+    const stayId1 = stayBody1.data.stay.stayId
+
+    // Submit late-checkout (mode switch)
+    await request('POST', '/api/late-checkout', {}, {
+      guestId, sessionId, roomNumber: 801,
+      requestedTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      qrToken, mode: 'LATE_CHECKOUT',
+    })
+
+    // Stay should be the same
+    const stay2 = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    const stayBody2 = JSON.parse(stay2.body)
+    expect(stayBody2.data.stay.stayId).toBe(stayId1)
+  })
+})
+
+describe('Orders are preserved across mode switches', () => {
+  it('room-service order visible after late-checkout submission', async () => {
+    const qrToken = generateQrToken(901, env.qrTokenSecret)
+    createRoom(901, qrToken)
+    const checkInRes = await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 901 })
+    const { guestId, sessionId } = JSON.parse(checkInRes.body).data
+
+    // Place order
+    await request('POST', '/api/room-service', {}, {
+      guestId, sessionId, roomNumber: 901,
+      items: [{ itemId: 'menu.002', name: 'Caprese Salad', quantity: 2, unitPrice: 950 }],
+      qrToken, mode: 'QR_ROOM_SERVICE',
+    })
+
+    // Submit late-checkout
+    await request('POST', '/api/late-checkout', {}, {
+      guestId, sessionId, roomNumber: 901,
+      requestedTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      qrToken, mode: 'LATE_CHECKOUT',
+    })
+
+    // Check orders are preserved
+    const stayRes = await request('GET', `/api/stay/current?token=${encodeURIComponent(qrToken)}`)
+    const stayBody = JSON.parse(stayRes.body)
+    expect(stayBody.data.orders.length).toBe(1)
+    expect(stayBody.data.orders[0].items[0].name).toBe('Caprese Salad')
+  })
+})
+
+describe('New guest never sees previous guest history', () => {
+  it('after checkout, new check-in returns empty orders', async () => {
+    const qrToken = generateQrToken(1001, env.qrTokenSecret)
+    createRoom(1001, qrToken)
+
+    // Guest 1 checks in, places order
+    await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 1001 })
+    await request('POST', '/api/room-service', {}, {
+      guestId: 'guest-A', sessionId: 'session-A', roomNumber: 1001,
+      items: [{ itemId: 'menu.001', name: 'Burger', quantity: 1, unitPrice: 1500 }],
+      qrToken, mode: 'QR_ROOM_SERVICE',
+    })
+
+    // Staff checks out the room
+    await request('POST', '/api/session/checkout', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 1001 })
+
+    // New token for guest 2 — reissue so old QR is rejected
+    const freshToken = generateQrToken(1001, env.qrTokenSecret)
+    reissueQrToken(1001, freshToken)
+
+    // Guest 2 checks in
+    const checkInRes = await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 1001 })
+    const checkInBody = JSON.parse(checkInRes.body)
+    expect(checkInBody.status).toBe('ok')
+
+    // Guest 2 should see no orders
+    const stayRes = await request('GET', `/api/stay/current?token=${encodeURIComponent(freshToken)}`)
+    const stayBody = JSON.parse(stayRes.body)
+    expect(stayBody.data.orders).toEqual([])
+  })
+})
+
+describe('Security: staff checkout requires auth', () => {
+  it('returns 401 without Bearer token', async () => {
+    const res = await request('POST', '/api/session/checkout', {}, { roomNumber: 1100 })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 with wrong token', async () => {
+    const res = await request('POST', '/api/session/checkout', { Authorization: 'Bearer wrong-token' }, { roomNumber: 1100 })
+    expect(res.status).toBe(401)
   })
 })

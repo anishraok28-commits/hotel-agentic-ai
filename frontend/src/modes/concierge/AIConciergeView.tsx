@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
 import { useGuestContext } from '@/context/GuestContext'
+import { useStayContext } from '@/context/StayContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -30,6 +31,7 @@ export function AIConciergeView() {
   const mode = MODES.AI_CONCIERGE
   const { result, run, reset } = useModeSubmit(mode.id)
   const guestCtx = useGuestContext()
+  const stayCtx = useStayContext()
   const [roomNumber, setRoomNumber] = useState(
     guestCtx.roomNumber ? String(guestCtx.roomNumber) : '',
   )
@@ -78,6 +80,13 @@ export function AIConciergeView() {
     }
     void run(payload)
   }
+
+  // Refresh stay context after successful concierge request.
+  useEffect(() => {
+    if (result.phase === 'success') {
+      stayCtx.refresh()
+    }
+  }, [result, stayCtx])
 
   return (
     <section className="mode-page">

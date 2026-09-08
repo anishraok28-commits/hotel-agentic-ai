@@ -24,6 +24,7 @@ export function checkIn(
   guestId: string,
   sessionId: string,
   ttlMs: number,
+  qrToken?: string,
 ): GuestSession {
   const now = Date.now()
   const session: GuestSession = {
@@ -36,8 +37,8 @@ export function checkIn(
 
   const db = getDatabase()
   db.prepare(
-    'INSERT OR REPLACE INTO sessions (room_id, guest_id, session_id, checked_in_at, expires_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(roomId, guestId, sessionId, session.checkedInAt, session.expiresAt)
+    'INSERT OR REPLACE INTO sessions (room_id, guest_id, session_id, checked_in_at, expires_at, qr_token) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(roomId, guestId, sessionId, session.checkedInAt, session.expiresAt, qrToken ?? '')
 
   return session
 }

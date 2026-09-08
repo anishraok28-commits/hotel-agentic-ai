@@ -36,6 +36,7 @@ export function getDatabase(dbPath?: string): Database.Database {
   db.pragma('foreign_keys = ON')
 
   createSchema(db)
+  migrateSchema(db)
 
   return db
 }
@@ -69,6 +70,21 @@ function createSchema(database: Database.Database): void {
       checked_in_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS stays (
+      stay_id TEXT PRIMARY KEY,
+      room_number INTEGER NOT NULL,
+      guest_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      qr_token TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'checked_out')),
+      checked_in_at INTEGER NOT NULL,
+      checked_out_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_stays_room ON stays (room_number, status);
+    CREATE INDEX IF NOT EXISTS idx_stays_guest ON stays (guest_id, session_id);
 
     CREATE TABLE IF NOT EXISTS orders (
       order_id TEXT PRIMARY KEY,
@@ -123,4 +139,15 @@ function createSchema(database: Database.Database): void {
       updated_at INTEGER NOT NULL
     );
   `)
+}
+
+/**
+ * Safe migrations for adding columns to existing tables.
+ * Each migration checks if the column already exists before altering.
+ */
+function migrateSchema(database: Database.Database): void {
+  const sessionColumns = database.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>
+  if (!sessionColumns.some((c) => c.name === 'qr_token')) {
+    database.exec("ALTER TABLE sessions ADD COLUMN qr_token TEXT NOT NULL DEFAULT ''")
+  }
 }

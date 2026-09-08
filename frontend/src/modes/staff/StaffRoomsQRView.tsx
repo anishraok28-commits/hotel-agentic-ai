@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import QRCode from 'qrcode'
 import { Link } from 'react-router-dom'
-import { listRooms, createRoom, updateRoom, deleteRoom, reissueRoomQr, type RoomData } from '@/api/mockTransport'
+import { listRooms, createRoom, updateRoom, deleteRoom, reissueRoomQr, checkoutRoom, type RoomData } from '@/api/mockTransport'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -49,6 +49,7 @@ export function StaffRoomsQRView() {
   const [batchGenerating, setBatchGenerating] = useState(false)
   const [batchResults, setBatchResults] = useState<BatchResult[] | null>(null)
   const [reissuingRoom, setReissuingRoom] = useState<number | null>(null)
+  const [checkingOutRoom, setCheckingOutRoom] = useState<number | null>(null)
 
   const loadRooms = useCallback(async () => {
     setLoading(true)
@@ -148,6 +149,18 @@ export function StaffRoomsQRView() {
       await loadRooms()
     } catch { /* ignore */ }
     setReissuingRoom(null)
+  }
+
+  async function handleCheckout(roomNumber: number) {
+    if (!window.confirm(`Check out Room ${roomNumber}? This will end the active session and stay.`)) {
+      return
+    }
+    setCheckingOutRoom(roomNumber)
+    try {
+      await checkoutRoom(roomNumber)
+      await loadRooms()
+    } catch { /* ignore */ }
+    setCheckingOutRoom(null)
   }
 
   async function handleBatchGenerate(event: FormEvent<HTMLFormElement>) {
@@ -355,6 +368,16 @@ export function StaffRoomsQRView() {
                           disabled={reissuingRoom === room.roomNumber}
                         >
                           {reissuingRoom === room.roomNumber ? 'Reissuing...' : 'Reissue QR'}
+                        </Button>
+                      ) : null}
+                      {room.active ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void handleCheckout(room.roomNumber)}
+                          disabled={checkingOutRoom === room.roomNumber}
+                        >
+                          {checkingOutRoom === room.roomNumber ? 'Checking out...' : 'Checkout'}
                         </Button>
                       ) : null}
                       <Button

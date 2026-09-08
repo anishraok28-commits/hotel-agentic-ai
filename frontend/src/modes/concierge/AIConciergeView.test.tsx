@@ -12,6 +12,7 @@ vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: true,
   createGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
   submit: mocks.submit,
+  fetchCurrentStay: () => Promise.resolve({ stay: null, session: null, orders: [] }),
 }))
 
 import { AIConciergeView } from './AIConciergeView'

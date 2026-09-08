@@ -342,6 +342,37 @@ export async function reissueRoomQr(
 }
 
 /**
+ * Staff checkout: deactivate a session and checkout the stay for a given room.
+ * POSTs to /api/session/checkout with Bearer auth.
+ */
+export async function checkoutRoom(
+  roomNumber: number,
+): Promise<{ ok: boolean; message: string }> {
+  if (MOCK_API_ENABLED) {
+    await sleep(300)
+    return { ok: true, message: `Room ${roomNumber} checked out (mock).` }
+  }
+
+  const url = `${appConfig.apiBaseUrl}/api/session/checkout`
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (appConfig.serviceToken) {
+    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ roomNumber }),
+  })
+
+  const body = (await response.json()) as { message?: string }
+  if (!response.ok) {
+    return { ok: false, message: body?.message ?? 'Checkout failed' }
+  }
+  return { ok: true, message: body?.message ?? `Room ${roomNumber} checked out.` }
+}
+
+/**
  * Check order status via the backend /api/order/status endpoint.
  * In mock mode, returns the current mock order state.
  */
@@ -566,6 +597,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function isStayData(value: unknown): value is StayData {
+  return isRecord(value) &&
+    (value.stay === null || (isRecord(value.stay) && typeof value.stay.roomNumber === 'number')) &&
+    (value.session === null || isRecord(value.session)) &&
+    Array.isArray(value.orders)
+}
+
 function isSuccessResponse(value: unknown): value is ApiSuccessResponse {
   return isRecord(value) && (value.status === 'accepted' || value.status === 'ok') && typeof value.message === 'string'
 }
@@ -689,6 +727,92 @@ export async function updateOrderStatus(
         status: 'error',
         requestId: 'local-timeout',
         message: 'Order status update timed out.',
+        code: 'INTERNAL_ERROR',
+      }
+    }
+    return {
+      status: 'error',
+      requestId: 'local-network',
+      message: 'Failed to reach the backend service',
+      code: 'AUTOMATION_FAILED',
+    }
+  }
+}
+
+/** Active stay data returned by GET /api/stay/current. */
+export interface StayData {
+  stay: {
+    stayId: string
+    roomNumber: number
+    status: 'active' | 'checked_out'
+    checkedInAt: string
+    checkedOutAt: string | null
+  } | null
+  session: {
+    roomId: number
+    guestId: string
+    sessionId: string
+    expiresAt: string
+  }
+  orders: Array<{
+    orderId: string
+    status: string
+    roomNumber: number
+    items: Array<{ itemId: string; name: string; quantity: number; unitPrice: number }>
+    total: number
+    notes: string | undefined
+    createdAt: string
+    updatedAt: string
+  }>
+}
+
+/**
+ * Fetch the current active stay and order history from the backend.
+ * Used by StayContext to restore state after page refresh or mode switch.
+ */
+export async function fetchCurrentStay(
+  qrToken: string,
+): Promise<{ status: 'ok'; data: StayData } | ApiErrorResponse> {
+  if (MOCK_API_ENABLED) {
+    await sleep(100)
+    return {
+      status: 'ok',
+      data: {
+        stay: null,
+        session: { roomId: 0, guestId: '', sessionId: '', expiresAt: new Date().toISOString() },
+        orders: [],
+      },
+    }
+  }
+
+  const url = `${appConfig.apiBaseUrl}/api/stay/current?token=${encodeURIComponent(qrToken)}`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    const body = await parseResponseBody(response)
+    if (isSuccessResponse(body) && isStayData(body.data)) {
+      return { status: 'ok', data: body.data }
+    }
+    if (isErrorResponse(body)) return body
+    return {
+      status: 'error',
+      requestId: 'local-parse',
+      message: 'Unexpected response from stay lookup.',
+      code: 'INTERNAL_ERROR',
+    }
+  } catch (err) {
+    clearTimeout(timer)
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return {
+        status: 'error',
+        requestId: 'local-timeout',
+        message: 'Stay lookup timed out.',
         code: 'INTERNAL_ERROR',
       }
     }

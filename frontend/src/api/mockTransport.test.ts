@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { submit, checkOrderStatus, resetMockOrderState } from '@/api/mockTransport'
+import { submit, checkOrderStatus, resetMockOrderState, fetchCurrentStay, checkoutRoom } from '@/api/mockTransport'
 
 beforeEach(() => {
   resetMockOrderState()
@@ -270,5 +270,73 @@ describe('checkOrderStatus (real Backend path)', () => {
     )
     const result = await checkOrderStatus('order-nope')
     expect(result).toMatchObject({ status: 'error', code: 'NOT_FOUND' })
+  })
+})
+
+describe('fetchCurrentStay', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('returns stay data from backend', async () => {
+    fetchMock.mockResolvedValue(
+      postJson({
+        status: 'ok',
+        requestId: 'test-stay-001',
+        message: 'Active stay retrieved',
+        data: {
+          stay: { stayId: 's1', roomNumber: 201, status: 'active', checkedInAt: '2026-01-01T00:00:00Z', checkedOutAt: null },
+          session: { roomId: 201, guestId: 'g1', sessionId: 'sess1', expiresAt: '2026-01-02T00:00:00Z' },
+          orders: [],
+        },
+      }, true),
+    )
+    const result = await fetchCurrentStay('test-token')
+    expect(result.status).toBe('ok')
+    if (result.status === 'ok') {
+      expect(result.data.stay).not.toBeNull()
+      expect(result.data.stay?.roomNumber).toBe(201)
+      expect(result.data.orders).toEqual([])
+    }
+  })
+
+  it('returns null stay on 404', async () => {
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'error', message: 'Not found', code: 'NOT_FOUND' }, false, 404),
+    )
+    const result = await fetchCurrentStay('test-token')
+    expect(result.status).toBe('error')
+  })
+})
+
+describe('checkoutRoom', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('sends checkout request and returns ok', async () => {
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'ok', message: 'Room checked out.' }, true),
+    )
+    const result = await checkoutRoom(301)
+    expect(result.ok).toBe(true)
+    const call = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(call[0]).toContain('/api/session/checkout')
+    expect(call[1].method).toBe('POST')
+  })
+
+  it('returns error on failure', async () => {
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'error', message: 'No active stay' }, false, 404),
+    )
+    const result = await checkoutRoom(999)
+    expect(result.ok).toBe(false)
+    expect(result.message).toBe('No active stay')
   })
 })

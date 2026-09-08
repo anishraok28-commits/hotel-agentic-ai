@@ -3,6 +3,7 @@ import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
 import { useGuestContext, loadGuestContext } from '@/context/GuestContext'
+import { useStayContext } from '@/context/StayContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -19,6 +20,7 @@ export function LateCheckoutView() {
   const mode = MODES.LATE_CHECKOUT
   const { result, run, reset } = useModeSubmit(mode.id)
   const guestCtx = useGuestContext()
+  const stayCtx = useStayContext()
   const [searchParams] = useSearchParams()
   const qrTokenFromUrl = searchParams.get('token') ?? ''
 
@@ -47,8 +49,10 @@ export function LateCheckoutView() {
       if (respData && typeof respData.guestId === 'string' && typeof respData.sessionId === 'string') {
         guestCtx.updateSession(respData.guestId, respData.sessionId)
       }
+      // Refresh stay context so this request appears in cross-device history.
+      stayCtx.refresh()
     }
-  }, [result, guestCtx])
+  }, [result, guestCtx, stayCtx])
 
   const selected = LATE_CHECKOUT_OPTIONS.find((o) => o.hours === hours) ?? LATE_CHECKOUT_OPTIONS[0]
 

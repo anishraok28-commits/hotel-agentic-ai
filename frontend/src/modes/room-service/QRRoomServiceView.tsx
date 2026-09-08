@@ -3,6 +3,7 @@ import type { FormEvent, ChangeEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
 import { useGuestContext, loadGuestContext } from '@/context/GuestContext'
+import { useStayContext } from '@/context/StayContext'
 import { checkOrderStatus } from '@/api/mockTransport'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -105,6 +106,7 @@ export function QRRoomServiceView() {
   const mode = MODES.QR_ROOM_SERVICE
   const { result, run, reset } = useModeSubmit(mode.id)
   const guestCtx = useGuestContext()
+  const stayCtx = useStayContext()
   const [searchParams] = useSearchParams()
   const qrTokenFromUrl = searchParams.get('token') ?? ''
 
@@ -273,6 +275,9 @@ export function QRRoomServiceView() {
           ...authCtx,
         }))
       } catch { /* storage full or unavailable */ }
+
+      // Refresh stay context so the new order appears in cross-device history.
+      stayCtx.refresh()
     }
   }
 

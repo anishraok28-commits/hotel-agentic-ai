@@ -16,8 +16,10 @@ import { isAuthorized } from './middleware/auth.js'
 import { createRateLimiter, type RateLimiter } from './middleware/rateLimit.js'
 import { createIdempotencyStore } from './middleware/idempotency.js'
 import { generateQrToken, verifyQrToken } from './session/qrToken.js'
-import { checkIn, getSession } from './session/store.js'
+import { checkIn, getSession, checkOut } from './session/store.js'
 import { createRoom, getRoomByNumber, listRooms, updateRoomActive, reissueQrToken } from './room/roomStore.js'
+import { getActiveStay, checkoutStay } from './stay/store.js'
+import { getOrdersByGuest } from './order/store.js'
 import { getStaffByIdentifier } from './staff/staffRoleStore.js'
 import { getDatabase, closeDatabase } from './db/database.js'
 import type { EnvConfig } from './config/env.js'
@@ -210,6 +212,22 @@ function route(
   if (method === 'POST' && url === '/api/session/verify') {
     if (!authorizePost(req, res, env, limiter)) return
     void handleVerifySession(req, res, env)
+    return
+  }
+
+  // Current active stay query (guest-authenticated via QR token).
+  // Returns the active stay and its order history for cross-device state.
+  if (method === 'GET' && url?.startsWith('/api/stay/current')) {
+    if (authorizeGuest(req, res, limiter)) {
+      handleStayCurrent(req, res, env)
+    }
+    return
+  }
+
+  // Staff checkout: close an active stay for a room.
+  if (method === 'POST' && url === '/api/session/checkout') {
+    if (!authorizePost(req, res, env, limiter)) return
+    handleCheckout(req, res, env)
     return
   }
 
@@ -543,6 +561,171 @@ async function handleVerifySession(
       sessionId: session.sessionId,
       expiresAt: new Date(session.expiresAt).toISOString(),
     },
+  })
+}
+
+/**
+ * GET /api/stay/current?token=<qrToken>
+ *
+ * Returns the active stay and its order history for the room identified
+ * by the QR token. This is the cross-device state endpoint: all devices
+ * scanning the same QR resolve to the same active stay.
+ */
+function handleStayCurrent(req: IncomingMessage, res: ServerResponse, env: EnvConfig): void {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+  const qrToken = url.searchParams.get('token') ?? ''
+
+  if (typeof qrToken !== 'string' || qrToken.trim() === '') {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'token query parameter required',
+      code: 'MISSING_FIELD',
+    })
+    return
+  }
+
+  const tokenResult = verifyQrToken(qrToken, env.qrTokenSecret)
+  if (tokenResult === undefined) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Invalid, expired, or tampered QR token',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
+  const room = getRoomByNumber(tokenResult.roomId)
+  if (room && !room.active) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Room is not active',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+  if (room && room.qrToken !== qrToken) {
+    sendJson(res, 403, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'QR token does not match room',
+      code: 'AUTH_REQUIRED',
+    })
+    return
+  }
+
+  const session = getSession(tokenResult.roomId)
+  if (!session) {
+    sendJson(res, 404, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'No active session for this room',
+      code: 'NOT_FOUND',
+    })
+    return
+  }
+
+  const activeStay = getActiveStay(tokenResult.roomId)
+  const orders = getOrdersByGuest(session.guestId, session.sessionId, tokenResult.roomId)
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Active stay retrieved',
+    data: {
+      stay: activeStay ? {
+        stayId: activeStay.stayId,
+        roomNumber: activeStay.roomNumber,
+        status: activeStay.status,
+        checkedInAt: new Date(activeStay.checkedInAt).toISOString(),
+        checkedOutAt: activeStay.checkedOutAt ? new Date(activeStay.checkedOutAt).toISOString() : null,
+      } : null,
+      session: {
+        roomId: session.roomId,
+        guestId: session.guestId,
+        sessionId: session.sessionId,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      },
+      orders: orders.map((o) => ({
+        orderId: o.orderId,
+        status: o.status,
+        roomNumber: o.roomNumber,
+        items: o.items,
+        total: o.total,
+        notes: o.notes,
+        createdAt: new Date(o.createdAt).toISOString(),
+        updatedAt: new Date(o.updatedAt).toISOString(),
+      })),
+    },
+  })
+}
+
+/**
+ * POST /api/session/checkout
+ * Staff-controlled checkout: closes an active stay and session for a room.
+ */
+function handleCheckout(req: IncomingMessage, res: ServerResponse, _env: EnvConfig): void {
+  readBody(req).then((raw) => {
+    let body: Record<string, unknown>
+    try {
+      body = JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      sendJson(res, 400, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Invalid JSON body',
+        code: 'INVALID_REQUEST',
+      })
+      return
+    }
+
+    const roomNumber = body.roomNumber as number | undefined
+    if (typeof roomNumber !== 'number' || !Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999) {
+      sendJson(res, 400, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'roomNumber required (integer 1-9999)',
+        code: 'MISSING_FIELD',
+      })
+      return
+    }
+
+    const activeStay = getActiveStay(roomNumber)
+    if (!activeStay) {
+      sendJson(res, 404, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'No active stay for this room',
+        code: 'NOT_FOUND',
+      })
+      return
+    }
+
+    // Close the stay
+    checkoutStay(activeStay.stayId)
+
+    // Delete the active session
+    checkOut(roomNumber)
+
+    sendJson(res, 200, {
+      status: 'ok',
+      requestId: crypto.randomUUID(),
+      message: 'Room checked out successfully',
+      data: {
+        roomNumber,
+        stayId: activeStay.stayId,
+        checkedOutAt: new Date().toISOString(),
+      },
+    })
+  }).catch((err) => {
+    sendJson(res, 500, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: 'Internal error during checkout',
+      code: 'INTERNAL_ERROR',
+    })
   })
 }
 
