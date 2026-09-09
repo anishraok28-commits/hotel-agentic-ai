@@ -361,8 +361,8 @@ async function handleCheckIn(
   const sessionId = crypto.randomUUID()
 
   const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
-  checkIn(roomId, guestId, sessionId, ttlMs)
   const qrToken = generateQrToken(roomId, env.qrTokenSecret)
+  checkIn(roomId, guestId, sessionId, ttlMs, qrToken)
 
   sendJson(res, 200, {
     status: 'ok',
@@ -484,7 +484,7 @@ async function handleGuestInit(
   const guestId = crypto.randomUUID()
   const sessionId = crypto.randomUUID()
   const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
-  const session = checkIn(verifiedRoomId, guestId, sessionId, ttlMs)
+  const session = checkIn(verifiedRoomId, guestId, sessionId, ttlMs, qrToken)
 
   sendJson(res, 200, {
     status: 'ok',
