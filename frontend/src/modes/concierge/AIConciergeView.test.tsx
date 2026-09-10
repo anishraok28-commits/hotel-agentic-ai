@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { GuestContext } from '@/context/GuestContext'
 
 const mocks = vi.hoisted(() => ({
   submit: vi.fn(),
@@ -10,12 +11,35 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: true,
-  createGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
   submit: mocks.submit,
   fetchCurrentStay: () => Promise.resolve({ stay: null, session: null, orders: [] }),
 }))
 
 import { AIConciergeView } from './AIConciergeView'
+
+const defaultGuestContext: {
+  roomNumber: number | null
+  guestId: string
+  sessionId: string
+  qrToken: string
+  updateSession: (guestId: string, sessionId: string) => void
+} = {
+  roomNumber: null,
+  guestId: '',
+  sessionId: '',
+  qrToken: '',
+  updateSession: () => {},
+}
+
+function renderView(contextOverrides?: Partial<typeof defaultGuestContext>) {
+  return render(
+    <MemoryRouter>
+      <GuestContext.Provider value={{ ...defaultGuestContext, ...contextOverrides }}>
+        <AIConciergeView />
+      </GuestContext.Provider>
+    </MemoryRouter>,
+  )
+}
 
 async function mockSubmit() {
   mocks.submit.mockImplementation(async () => {
@@ -34,14 +58,6 @@ async function mockSubmit() {
       data: { submittedAt: '2026-08-11T00:00:00.000Z' },
     }
   })
-}
-
-function renderView() {
-  return render(
-    <MemoryRouter>
-      <AIConciergeView />
-    </MemoryRouter>,
-  )
 }
 
 describe('AIConciergeView', () => {
@@ -112,7 +128,7 @@ describe('AIConciergeView', () => {
 
   it('submits a concierge request and shows the success state', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'test-guest', sessionId: 'test-session', roomNumber: 214 })
 
     await user.type(screen.getByRole('textbox', { name: /Your request/ }), 'Book a spa session')
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '214')
@@ -130,8 +146,8 @@ describe('AIConciergeView', () => {
       mode: 'AI_CONCIERGE',
       roomNumber: 214,
       request: 'Book a spa session',
-      guestId: 'stub-guest',
-      sessionId: 'stub-session',
+      guestId: 'test-guest',
+      sessionId: 'test-session',
     })
   })
 

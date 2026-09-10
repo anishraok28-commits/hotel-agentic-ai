@@ -1,27 +1,30 @@
 import type { ReactNode } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { getCurrentRole, setCurrentRole, hasPermission, ALL_STAFF_ROLES, STAFF_ROLE_LABELS, type StaffRole } from '@/auth/staffAuth'
+import { useAuth, type StaffRole } from '@/auth/AuthContext'
 
 interface StaffTab {
   readonly path: string
   readonly label: string
-  readonly permission: string
+  readonly roles: readonly StaffRole[]
 }
 
 const STAFF_TABS: readonly StaffTab[] = [
-  { path: '/staff/orders', label: 'Active Orders', permission: 'orders' },
-  { path: '/staff/rooms-qr', label: 'Rooms & QR', permission: 'rooms-qr-view' },
-  { path: '/staff/dashboard', label: 'Dashboard', permission: 'dashboard' },
+  { path: '/staff/orders', label: 'Active Orders', roles: ['FRONT_DESK', 'KITCHEN', 'MANAGER'] },
+  { path: '/staff/rooms-qr', label: 'Rooms & QR', roles: ['FRONT_DESK', 'MANAGER'] },
+  { path: '/staff/dashboard', label: 'Dashboard', roles: ['MANAGER', 'OWNER'] },
+  { path: '/staff/users', label: 'Users', roles: ['MANAGER', 'OWNER'] },
 ]
 
 export function StaffShell() {
-  const role = getCurrentRole()
-  const visibleTabs = STAFF_TABS.filter((tab) => hasPermission(role, tab.permission))
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const role = user?.role ?? 'FRONT_DESK'
+  const visibleTabs = STAFF_TABS.filter((tab) => tab.roles.includes(role))
 
-  function handleRoleChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    setCurrentRole(event.target.value as StaffRole)
-    window.location.reload()
+  function handleLogout() {
+    logout()
+    navigate('/login', { replace: true })
   }
 
   return (
@@ -29,21 +32,20 @@ export function StaffShell() {
       <PageHeader
         kicker="Staff"
         title="Staff Dashboard"
-        subtitle="Manage guest orders and room QR codes."
+        subtitle={`Logged in as ${user?.name ?? 'Staff'} (${role})`}
       />
 
       <div className="staff-role-selector">
-        <label htmlFor="staff-role">Role:</label>
-        <select
-          id="staff-role"
-          value={role}
-          onChange={handleRoleChange}
-          className="staff-role-selector__select"
+        <span className="staff-role-selector__label">
+          Role: {role}
+        </span>
+        <button
+          onClick={handleLogout}
+          className="staff-role-selector__logout"
+          type="button"
         >
-          {ALL_STAFF_ROLES.map((r) => (
-            <option key={r} value={r}>{STAFF_ROLE_LABELS[r]}</option>
-          ))}
-        </select>
+          Sign Out
+        </button>
       </div>
 
       <nav className="staff-tabs" aria-label="Staff navigation">

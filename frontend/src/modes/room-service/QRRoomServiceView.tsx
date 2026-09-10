@@ -231,7 +231,7 @@ export function QRRoomServiceView() {
         unitPrice,
       })),
       notes: notes.trim() ? notes : undefined,
-      qrToken: qrToken || undefined,
+      qrToken,
       mode: 'QR_ROOM_SERVICE',
     }
     await run(payload)

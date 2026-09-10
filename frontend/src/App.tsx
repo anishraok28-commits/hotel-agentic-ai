@@ -8,6 +8,7 @@ import { UnifiedRouterView } from '@/modes/unified/UnifiedRouterView'
 import { StaffOrdersView } from '@/modes/staff/StaffOrdersView'
 import { StaffRoomsQRView } from '@/modes/staff/StaffRoomsQRView'
 import { StaffShell } from '@/modes/staff/StaffShell'
+import { UserManagementView } from '@/modes/staff/UserManagementView'
 import { OwnerDashboard } from '@/features/owner/OwnerDashboard'
 import { QRManagementView } from '@/modes/admin/QRManagementView'
 import { NotFound } from '@/components/state/NotFound'
@@ -17,6 +18,10 @@ import { TermsOfService } from '@/modes/internal/TermsOfService'
 import { PilotChecklist } from '@/modes/internal/PilotChecklist'
 import { TeamRoles } from '@/modes/internal/TeamRoles'
 import { BusinessReadiness } from '@/modes/internal/BusinessReadiness'
+import { LoginPage } from '@/modes/auth/LoginPage'
+import { ChangePasswordPage } from '@/modes/auth/ChangePasswordPage'
+import { AuthProvider } from '@/auth/AuthContext'
+import { ProtectedRoute } from '@/auth/ProtectedRoute'
 import { Card } from '@/components/ui/Card'
 import { LoadingState } from '@/components/state/LoadingState'
 import { ErrorState } from '@/components/state/ErrorState'
@@ -162,32 +167,82 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
 export default function App() {
   return (
     <BrowserRouter>
-      <GuestContextProvider>
-        <StayProvider>
-          <AppShell>
-            <Routes>
-            <Route path="/" element={<RootLanding />} />
-            <Route path="/concierge" element={<AIConciergeView />} />
-            <Route path="/room-service" element={<QRRoomServiceView />} />
-            <Route path="/late-checkout" element={<LateCheckoutView />} />
-            <Route path="/staff-orders" element={<Navigate to="/staff/orders" replace />} />
-            <Route path="/staff" element={<StaffShell />}>
-              <Route path="orders" element={<StaffOrdersView />} />
-              <Route path="rooms-qr" element={<StaffRoomsQRView />} />
-              <Route path="dashboard" element={<OwnerDashboard />} />
-            </Route>
-            <Route path="/qr-management" element={<QRManagementView />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsOfService />} />
-            <Route path="/internal/feedback" element={<FeedbackCapture />} />
-            <Route path="/internal/pilot-checklist" element={<PilotChecklist />} />
-            <Route path="/internal/team-roles" element={<TeamRoles />} />
-            <Route path="/internal/business-readiness" element={<BusinessReadiness />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </AppShell>
-        </StayProvider>
-      </GuestContextProvider>
+      <AuthProvider>
+        <GuestContextProvider>
+          <StayProvider>
+            <AppShell>
+              <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/change-password" element={
+                <ProtectedRoute>
+                  <ChangePasswordPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/" element={<RootLanding />} />
+              <Route path="/concierge" element={<AIConciergeView />} />
+              <Route path="/room-service" element={<QRRoomServiceView />} />
+              <Route path="/late-checkout" element={<LateCheckoutView />} />
+              <Route path="/staff-orders" element={<Navigate to="/staff/orders" replace />} />
+              <Route
+                path="/staff"
+                element={
+                  <ProtectedRoute>
+                    <StaffShell />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="orders" element={<StaffOrdersView />} />
+                <Route path="rooms-qr" element={<StaffRoomsQRView />} />
+                <Route
+                  path="dashboard"
+                  element={
+                    <ProtectedRoute requiredRoles={['MANAGER', 'OWNER']}>
+                      <OwnerDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="users"
+                  element={
+                    <ProtectedRoute requiredRoles={['MANAGER', 'OWNER']}>
+                      <UserManagementView />
+                    </ProtectedRoute>
+                  }
+                />
+              </Route>
+              <Route path="/qr-management" element={
+                <ProtectedRoute>
+                  <QRManagementView />
+                </ProtectedRoute>
+              } />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/internal/feedback" element={
+                <ProtectedRoute>
+                  <FeedbackCapture />
+                </ProtectedRoute>
+              } />
+              <Route path="/internal/pilot-checklist" element={
+                <ProtectedRoute>
+                  <PilotChecklist />
+                </ProtectedRoute>
+              } />
+              <Route path="/internal/team-roles" element={
+                <ProtectedRoute>
+                  <TeamRoles />
+                </ProtectedRoute>
+              } />
+              <Route path="/internal/business-readiness" element={
+                <ProtectedRoute>
+                  <BusinessReadiness />
+                </ProtectedRoute>
+              } />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            </AppShell>
+          </StayProvider>
+        </GuestContextProvider>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

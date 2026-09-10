@@ -16,6 +16,7 @@ import { Icon } from '@/components/icon/Icon'
 import { LoadingState } from '@/components/state/LoadingState'
 import { ErrorState } from '@/components/state/ErrorState'
 import { fetchDashboard, type DashboardMetrics } from '@/features/owner/ownerApi'
+import { useAuth } from '@/auth/AuthContext'
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -25,6 +26,7 @@ function formatCurrency(amount: number): string {
 }
 
 export function OwnerDashboard() {
+  const { user } = useAuth()
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +47,17 @@ export function OwnerDashboard() {
   useEffect(() => {
     void loadDashboard()
   }, [loadDashboard])
+
+  // Defense-in-depth: block rendering for unauthorized roles
+  if (user && !['MANAGER', 'OWNER'].includes(user.role)) {
+    return (
+      <section className="mode-page">
+        <Card>
+          <ErrorState title="Access Denied" message="You do not have permission to view the dashboard." />
+        </Card>
+      </section>
+    )
+  }
 
   if (loading) {
     return (

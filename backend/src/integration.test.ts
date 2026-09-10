@@ -1237,7 +1237,7 @@ describe('Order status query (guest-authenticated)', () => {
       sessionId: checkInBody2.data.sessionId,
       qrToken: checkInBody2.data.qrToken,
     })
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(403)
   })
 
   it('normal guest cannot access admin update-status endpoint', async () => {
@@ -1749,12 +1749,14 @@ describe('Stay lifecycle and cross-device state', () => {
   })
 
   it('GET /api/stay/current returns 403 for reissued token', async () => {
-    const oldToken = generateQrToken(502, env.qrTokenSecret)
+    const oldIssuedAt = Date.now()
+    const oldToken = generateQrToken(502, env.qrTokenSecret, oldIssuedAt)
     createRoom(502, oldToken)
     await request('POST', '/api/session/check-in', { Authorization: `Bearer ${TOKEN}` }, { roomNumber: 502 })
 
     // Reissue → old token should be rejected
-    reissueQrToken(502, generateQrToken(502, env.qrTokenSecret))
+    const newToken = generateQrToken(502, env.qrTokenSecret, oldIssuedAt + 1000)
+    reissueQrToken(502, newToken)
 
     const res = await request('GET', `/api/stay/current?token=${encodeURIComponent(oldToken)}`)
     expect(res.status).toBe(403)

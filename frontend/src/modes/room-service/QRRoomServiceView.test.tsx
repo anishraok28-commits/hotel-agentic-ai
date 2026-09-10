@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api/mockTransport', () => ({
   MOCK_API_ENABLED: true,
-  createGuestContext: () => ({ guestId: 'stub-guest', sessionId: 'stub-session' }),
   submit: mocks.submit,
   checkOrderStatus: mocks.checkOrderStatus,
   fetchCurrentStay: () => Promise.resolve({ stay: null, session: null, orders: [] }),

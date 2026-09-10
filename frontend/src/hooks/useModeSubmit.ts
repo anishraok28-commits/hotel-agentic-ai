@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { createGuestContext, submit } from '@/api/mockTransport'
+import { submit } from '@/api/mockTransport'
 import { futureRouteFor } from '@/api/apiContract'
 import type {
   ApiErrorResponse,
@@ -46,11 +46,8 @@ export function useModeSubmit(mode: FrontendMode) {
         return
       }
 
-      const guestContext = createGuestContext()
-      const enriched = guestContext ? { ...payload, ...guestContext } : payload
-
       setResult({ phase: 'loading' })
-      const response = await submit(route, enriched)
+      const response = await submit(route, payload)
 
       if (response.status === 'error') {
         setResult({ phase: 'error', error: response })

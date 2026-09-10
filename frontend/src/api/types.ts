@@ -3,6 +3,8 @@
  * Source of truth: docs/api-contract.md.
  */
 
+import type { StaffRole } from '@/auth/AuthContext'
+
 export type SubmitStatus = 'accepted' | 'completed'
 
 export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'DELIVERED'
@@ -57,7 +59,7 @@ export interface RoomServiceRequest {
   roomNumber: number
   items: RoomServiceItem[]
   notes?: string
-  qrToken?: string
+  qrToken: string
   mode: 'QR_ROOM_SERVICE'
 }
 
@@ -67,7 +69,7 @@ export interface LateCheckoutRequest {
   sessionId: string
   roomNumber: number
   requestedTime: string
-  qrToken?: string
+  qrToken: string
   mode: 'LATE_CHECKOUT'
 }
 
@@ -91,4 +93,28 @@ export interface StaffOrder {
   status: OrderStatus
   createdAt: string
   updatedAt: string
+}
+
+/** Staff user data for management views. */
+export interface StaffUserListItem {
+  id: string
+  name: string
+  identifier: string
+  role: StaffRole
+  active: boolean
+  mustChangePassword: boolean
+  createdAt: string
+}
+
+/** Request payload for creating a new staff user. */
+export interface CreateUserRequest {
+  name: string
+  identifier: string
+  role: StaffRole
+  password: string
+}
+
+/** Request payload for updating a staff user's role. */
+export interface UpdateUserRoleRequest {
+  role: StaffRole
 }

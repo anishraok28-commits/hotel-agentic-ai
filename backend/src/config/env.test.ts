@@ -93,12 +93,12 @@ describe('env config', () => {
     expect(config.nodeEnv).toBe('production')
   })
 
-  it('defaults rate limit window to 60s and max to 30', () => {
+  it('defaults rate limit window to 60s and max to 120', () => {
     setRequired()
 
     const config = loadEnv()
     expect(config.rateLimitWindowSeconds).toBe(60)
-    expect(config.rateLimitMax).toBe(30)
+    expect(config.rateLimitMax).toBe(120)
   })
 
   it('reads RATE_LIMIT_WINDOW and RATE_LIMIT_MAX from environment', () => {
@@ -118,7 +118,7 @@ describe('env config', () => {
 
     const config = loadEnv()
     expect(config.rateLimitWindowSeconds).toBe(60)
-    expect(config.rateLimitMax).toBe(30)
+    expect(config.rateLimitMax).toBe(120)
   })
 
   it('error message mentions docs', () => {

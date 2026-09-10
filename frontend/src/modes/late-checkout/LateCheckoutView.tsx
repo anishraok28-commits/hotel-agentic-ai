@@ -63,7 +63,7 @@ export function LateCheckoutView() {
       sessionId: guestCtx.sessionId,
       roomNumber: Number(roomNumber),
       requestedTime: buildRequestedTime(hours),
-      qrToken: qrToken || undefined,
+      qrToken,
       mode: 'LATE_CHECKOUT',
     }
     void run(payload)

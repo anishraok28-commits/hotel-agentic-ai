@@ -19,6 +19,7 @@ export interface EnvConfig {
   readonly makeRoomServiceWebhookUrl: string
   readonly makeLateCheckoutWebhookUrl: string
   readonly qrTokenSecret: string
+  readonly staffTokenSecret: string
   readonly sessionTtlHours: number
   readonly dbPath: string
 }
@@ -77,7 +78,7 @@ export function loadEnv(): EnvConfig {
     nodeEnv,
     serviceToken: requireEnv('SERVICE_TOKEN'),
     rateLimitWindowSeconds: optionalIntEnv('RATE_LIMIT_WINDOW', 60),
-    rateLimitMax: optionalIntEnv('RATE_LIMIT_MAX', 30),
+    rateLimitMax: optionalIntEnv('RATE_LIMIT_MAX', 120),
     allowedOrigins: allowedOriginsEnv(),
     makeBookingWebhookUrl: requireEnv('MAKE_BOOKING_WEBHOOK_URL'),
     makeRoomServiceWebhookUrl: requireEnv('MAKE_ROOM_SERVICE_WEBHOOK_URL'),
@@ -85,6 +86,10 @@ export function loadEnv(): EnvConfig {
     qrTokenSecret: optionalEnv(
       'QR_TOKEN_SECRET',
       'dev-qr-secret-do-not-use-in-production',
+    ),
+    staffTokenSecret: optionalEnv(
+      'STAFF_TOKEN_SECRET',
+      'dev-staff-secret-do-not-use-in-production',
     ),
     sessionTtlHours: optionalIntEnv('SESSION_TTL_HOURS', 24),
     dbPath: optionalEnv('DB_PATH', './data/hotel.db'),

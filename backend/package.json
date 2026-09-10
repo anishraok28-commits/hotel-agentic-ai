@@ -10,7 +10,8 @@
     "lint": "oxlint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed": "tsx --env-file=.env src/seed.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

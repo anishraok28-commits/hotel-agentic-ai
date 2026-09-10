@@ -150,4 +150,47 @@ function migrateSchema(database: Database.Database): void {
   if (!sessionColumns.some((c) => c.name === 'qr_token')) {
     database.exec("ALTER TABLE sessions ADD COLUMN qr_token TEXT NOT NULL DEFAULT ''")
   }
+
+  // Add password_hash to staff_users if missing
+  const staffColumns = database.prepare("PRAGMA table_info(staff_users)").all() as Array<{ name: string }>
+  if (!staffColumns.some((c) => c.name === 'password_hash')) {
+    database.exec("ALTER TABLE staff_users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+  }
+
+  // Add must_change_password flag
+  if (!staffColumns.some((c) => c.name === 'must_change_password')) {
+    database.exec("ALTER TABLE staff_users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+  }
+
+  // Add token_version for token revocation
+  if (!staffColumns.some((c) => c.name === 'token_version')) {
+    database.exec("ALTER TABLE staff_users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1")
+  }
+
+  // Add failed login tracking
+  if (!staffColumns.some((c) => c.name === 'failed_login_attempts')) {
+    database.exec("ALTER TABLE staff_users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!staffColumns.some((c) => c.name === 'locked_until')) {
+    database.exec("ALTER TABLE staff_users ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0")
+  }
+
+  // Create audit_log table if it doesn't exist
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      user_name TEXT,
+      user_role TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log (created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log (user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entity_id);
+  `)
 }

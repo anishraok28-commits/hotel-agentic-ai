@@ -28,6 +28,8 @@ import {
 } from '../order/store.js'
 import type { OrderItem, Order } from '../order/store.js'
 import { createFeedback, listFeedback } from '../feedback/feedbackStore.js'
+import { recordAuditEvent } from '../audit/auditLog.js'
+import type { AuthenticatedUser } from '../auth/authorize.js'
 
 const MAX_BODY_BYTES = 50 * 1024
 
@@ -123,6 +125,17 @@ export async function handleConcierge(
     const webhookPayload = payload as WebhookPayload
     const response = await transport.send('BOOKING', webhookPayload)
     const statusCode = response.status === 'error' ? 502 : 202
+
+    // Audit: AI concierge request forwarded
+    if (response.status !== 'error') {
+      recordAuditEvent({
+        action: 'CONCIERGE_REQUEST',
+        entityType: 'concierge',
+        entityId: (payload as Record<string, unknown>).guestId as string,
+        details: JSON.stringify({ roomNumber: (payload as Record<string, unknown>).roomNumber }),
+      })
+    }
+
     sendJson(res, statusCode, response)
   } catch {
     sendJson(res, 502, {
@@ -324,6 +337,16 @@ export async function handleRoomService(
       idempotencyStore.set(idempotencyKey, statusCode, clientResponse)
     }
 
+    // Audit: room service order created
+    if (response.status !== 'error') {
+      recordAuditEvent({
+        action: 'ORDER_CREATED',
+        entityType: 'order',
+        entityId: order.orderId,
+        details: JSON.stringify({ roomNumber: order.roomNumber, total, itemCount: sanitizedItems.length }),
+      })
+    }
+
     sendJson(res, statusCode, clientResponse)
   } catch {
     const errorResponse = {
@@ -457,6 +480,17 @@ export async function handleLateCheckout(
           ...response,
           data: { ...response.data, guestId, sessionId },
         }
+
+    // Audit: late checkout request forwarded
+    if (response.status !== 'error') {
+      recordAuditEvent({
+        action: 'LATE_CHECKOUT_REQUEST',
+        entityType: 'late_checkout',
+        entityId: guestId,
+        details: JSON.stringify({ roomNumber: p.roomNumber, requestedTime: p.requestedTime }),
+      })
+    }
+
     sendJson(res, statusCode, clientResponse)
   } catch {
     sendJson(res, 502, {
@@ -568,45 +602,24 @@ export async function handleOrderStatus(
     return
   }
 
-  const session = verifySession(
+  let guestId = p.guestId as string
+  let sessionId = p.sessionId as string
+
+  let session = verifySession(
     tokenResult.roomId,
-    p.guestId as string,
-    p.sessionId as string,
+    guestId,
+    sessionId,
   )
 
   if (!session) {
-    // Session recovery: if session is missing (e.g., server restart), allow
-    // status check if the order exists and matches the request credentials.
-    const order = getOrder(orderId)
-    if (!order) {
-      sendJson(res, 403, {
-        status: 'error',
-        requestId: 'local-validation',
-        message: 'No active guest session for this room',
-        code: 'AUTH_REQUIRED',
-      })
-      return
-    }
-
-    if (
-      order.roomNumber !== tokenResult.roomId ||
-      order.guestId !== p.guestId ||
-      order.sessionId !== p.sessionId
-    ) {
-      sendJson(res, 403, {
-        status: 'error',
-        requestId: 'local-validation',
-        message: 'No active guest session for this room',
-        code: 'AUTH_REQUIRED',
-      })
-      return
-    }
-
-    sendOrderStatus(res, order)
-    return
+    // Session recovery: if the caller's credentials don't match (stale from
+    // another device, expired, server restart), note the existing session but
+    // do NOT overwrite the caller's guestId/sessionId — order ownership is
+    // verified against the credentials the caller actually sent.
+    session = getSession(tokenResult.roomId)
   }
 
-  // Normal path: session exists, verify order ownership.
+  // Verify order exists.
   const order = getOrder(orderId)
   if (!order) {
     sendJson(res, 404, {
@@ -618,16 +631,19 @@ export async function handleOrderStatus(
     return
   }
 
+  // Ownership check: the order must belong to the room identified by the QR
+  // token AND match the caller's guestId/sessionId credentials. This prevents
+  // a valid QR token holder from accessing another guest's orders.
   if (
     order.roomNumber !== tokenResult.roomId ||
-    order.guestId !== p.guestId ||
-    order.sessionId !== p.sessionId
+    order.guestId !== guestId ||
+    order.sessionId !== sessionId
   ) {
-    sendJson(res, 404, {
+    sendJson(res, 403, {
       status: 'error',
       requestId: 'local-validation',
-      message: 'Order not found',
-      code: 'NOT_FOUND',
+      message: 'Unauthorized',
+      code: 'AUTH_REQUIRED',
     })
     return
   }
@@ -642,6 +658,7 @@ export async function handleOrderStatus(
 export async function handleUpdateOrderStatus(
   req: IncomingMessage,
   res: ServerResponse,
+  user?: AuthenticatedUser,
 ): Promise<void> {
   const payload = await readAndParse(req, res)
   if (payload === undefined) return
@@ -681,6 +698,18 @@ export async function handleUpdateOrderStatus(
     })
     return
   }
+
+  // Record audit event for order status change
+  recordAuditEvent({
+    userId: user?.userId,
+    userName: user?.name,
+    userRole: user?.role,
+    action: 'ORDER_STATUS_UPDATE',
+    entityType: 'order',
+    entityId: orderId,
+    details: JSON.stringify({ orderId, newStatus, roomNumber: result.order.roomNumber }),
+    ipAddress: req.socket.remoteAddress ?? undefined,
+  })
 
   sendJson(res, 200, {
     status: 'ok',

@@ -2,12 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
 const mocks = vi.hoisted(() => ({
-  createGuestContext: vi.fn(),
   submit: vi.fn(),
 }))
 
 vi.mock('@/api/mockTransport', () => ({
-  createGuestContext: mocks.createGuestContext,
   submit: mocks.submit,
 }))
 
@@ -24,9 +22,8 @@ vi.mock('@/api/apiContract', () => ({
 
 import { useModeSubmit } from './useModeSubmit'
 
-describe('useModeSubmit — guest context handling', () => {
+describe('useModeSubmit — payload passthrough', () => {
   beforeEach(() => {
-    mocks.createGuestContext.mockReset()
     mocks.submit.mockReset()
     mocks.submit.mockResolvedValue({
       status: 'accepted',
@@ -36,33 +33,28 @@ describe('useModeSubmit — guest context handling', () => {
     })
   })
 
-  it('preserves real payload credentials when createGuestContext returns null', async () => {
-    mocks.createGuestContext.mockReturnValue(null)
-
+  it('passes payload directly to submit without modification', async () => {
     const { result } = renderHook(() => useModeSubmit('QR_ROOM_SERVICE'))
 
-    const realPayload = {
+    const payload = {
       guestId: 'real-guest-id',
       sessionId: 'real-session-id',
       roomNumber: 305,
       items: [{ itemId: 'menu.001', name: 'Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken: 'qr-abc',
       mode: 'QR_ROOM_SERVICE' as const,
     }
 
     await act(async () => {
-      await result.current.run(realPayload)
+      await result.current.run(payload)
     })
 
     expect(mocks.submit).toHaveBeenCalledTimes(1)
-    const [, submittedPayload] = mocks.submit.mock.calls[0]
-    expect(submittedPayload.guestId).toBe('real-guest-id')
-    expect(submittedPayload.sessionId).toBe('real-session-id')
-    expect(submittedPayload.roomNumber).toBe(305)
+    const [, submitted] = mocks.submit.mock.calls[0]
+    expect(submitted).toEqual(payload)
   })
 
-  it('does not overwrite real guestId with mock values', async () => {
-    mocks.createGuestContext.mockReturnValue(null)
-
+  it('does not overwrite real guestId', async () => {
     const { result } = renderHook(() => useModeSubmit('AI_CONCIERGE'))
 
     const payload = {
@@ -82,9 +74,7 @@ describe('useModeSubmit — guest context handling', () => {
     expect(submitted.sessionId).toBe('server-generated-session')
   })
 
-  it('does not overwrite real roomId with 0 from mock context', async () => {
-    mocks.createGuestContext.mockReturnValue(null)
-
+  it('does not overwrite real roomId', async () => {
     const { result } = renderHook(() => useModeSubmit('LATE_CHECKOUT'))
 
     const payload = {
@@ -92,6 +82,7 @@ describe('useModeSubmit — guest context handling', () => {
       sessionId: 'real-session',
       roomNumber: 205,
       requestedTime: '2026-01-01T14:00:00Z',
+      qrToken: 'qr-test',
       mode: 'LATE_CHECKOUT' as const,
     }
 
@@ -103,60 +94,7 @@ describe('useModeSubmit — guest context handling', () => {
     expect(submitted.roomNumber).toBe(205)
   })
 
-  it('merges guest context from createGuestContext when available', async () => {
-    mocks.createGuestContext.mockReturnValue({
-      roomId: 100,
-      guestId: 'mock-guest',
-      sessionId: 'mock-session',
-    })
-
-    const { result } = renderHook(() => useModeSubmit('QR_ROOM_SERVICE'))
-
-    const payload = {
-      guestId: 'original-guest',
-      sessionId: 'original-session',
-      roomNumber: 305,
-      items: [],
-      mode: 'QR_ROOM_SERVICE' as const,
-    }
-
-    await act(async () => {
-      await result.current.run(payload)
-    })
-
-    const [, submitted] = mocks.submit.mock.calls[0]
-    expect(submitted.guestId).toBe('mock-guest')
-    expect(submitted.sessionId).toBe('mock-session')
-    expect(submitted.roomId).toBe(100)
-  })
-
-  it('generates no random credentials when mockGuestContext is null', async () => {
-    mocks.createGuestContext.mockReturnValue(null)
-
-    const { result } = renderHook(() => useModeSubmit('QR_ROOM_SERVICE'))
-
-    const payload = {
-      guestId: 'stable-id',
-      sessionId: 'stable-session',
-      roomNumber: 1,
-      items: [],
-      mode: 'QR_ROOM_SERVICE' as const,
-    }
-
-    await act(async () => {
-      await result.current.run(payload)
-    })
-
-    const [, submitted] = mocks.submit.mock.calls[0]
-    expect(submitted.guestId).toBe('stable-id')
-    expect(submitted.sessionId).toBe('stable-session')
-    expect(submitted.guestId).not.toMatch(/^guest-/)
-    expect(submitted.sessionId).not.toMatch(/^session-/)
-  })
-
-  it('preserves payload when createGuestContext returns null (no spread)', async () => {
-    mocks.createGuestContext.mockReturnValue(null)
-
+  it('preserves qrToken in submitted payload', async () => {
     const { result } = renderHook(() => useModeSubmit('QR_ROOM_SERVICE'))
 
     const payload = {
@@ -175,5 +113,85 @@ describe('useModeSubmit — guest context handling', () => {
 
     const [, submitted] = mocks.submit.mock.calls[0]
     expect(submitted).toEqual(payload)
+  })
+
+  it('returns error when mode has no API route', async () => {
+    const { result } = renderHook(() => useModeSubmit('3_IN_1_UNIFIED'))
+
+    const payload = {
+      guestId: 'g1',
+      sessionId: 's1',
+      roomNumber: 1,
+      request: 'test',
+      mode: 'AI_CONCIERGE' as const,
+    }
+
+    await act(async () => {
+      await result.current.run(payload as never)
+    })
+
+    expect(result.current.result.phase).toBe('error')
+    if (result.current.result.phase === 'error') {
+      expect(result.current.result.error.message).toContain('no API route')
+    }
+  })
+
+  it('returns error on submission failure', async () => {
+    mocks.submit.mockResolvedValue({
+      status: 'error',
+      requestId: 'err-1',
+      message: 'Backend unavailable',
+      code: 'AUTOMATION_FAILED',
+    })
+
+    const { result } = renderHook(() => useModeSubmit('QR_ROOM_SERVICE'))
+
+    const payload = {
+      guestId: 'g1',
+      sessionId: 's1',
+      roomNumber: 1,
+      items: [],
+      qrToken: 'qr-1',
+      mode: 'QR_ROOM_SERVICE' as const,
+    }
+
+    await act(async () => {
+      await result.current.run(payload)
+    })
+
+    expect(result.current.result.phase).toBe('error')
+    if (result.current.result.phase === 'error') {
+      expect(result.current.result.error.code).toBe('AUTOMATION_FAILED')
+    }
+  })
+
+  it('prevents concurrent submissions', async () => {
+    let resolveFirst: (value: unknown) => void
+    mocks.submit.mockImplementation(() => new Promise((r) => { resolveFirst = r }))
+
+    const { result } = renderHook(() => useModeSubmit('QR_ROOM_SERVICE'))
+
+    const payload = {
+      guestId: 'g1',
+      sessionId: 's1',
+      roomNumber: 1,
+      items: [],
+      qrToken: 'qr-1',
+      mode: 'QR_ROOM_SERVICE' as const,
+    }
+
+    act(() => { void result.current.run(payload) })
+    act(() => { void result.current.run(payload) })
+
+    expect(mocks.submit).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveFirst!({
+        status: 'accepted',
+        requestId: 'ok-1',
+        message: 'ok',
+        data: {},
+      })
+    })
   })
 })
