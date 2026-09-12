@@ -275,4 +275,78 @@ describe('Security Attack Tests', () => {
       expect(result.ok).toBe(false)
     })
   })
+
+  describe('Test 13: FRONT_DESK can access room management (FRONT_DESK_AND_ABOVE)', () => {
+    const FRONT_DESK_AND_ABOVE: StaffRole[] = ['FRONT_DESK', 'MANAGER', 'OWNER']
+
+    it('should allow FRONT_DESK to access room list endpoint', () => {
+      const user = getStaffByIdentifier('frontdesk')!
+      const token = createStaffToken(user.id, user.tokenVersion, TEST_SECRET)
+      const req = createMockReq(token)
+      const result = authenticateAndAuthorize(req, mockEnv, FRONT_DESK_AND_ABOVE)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.user.role).toBe('FRONT_DESK')
+      }
+    })
+
+    it('should allow MANAGER to access room management endpoint', () => {
+      const user = getStaffByIdentifier('manager')!
+      const token = createStaffToken(user.id, user.tokenVersion, TEST_SECRET)
+      const req = createMockReq(token)
+      const result = authenticateAndAuthorize(req, mockEnv, FRONT_DESK_AND_ABOVE)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.user.role).toBe('MANAGER')
+      }
+    })
+
+    it('should allow OWNER to access room management endpoint', () => {
+      const user = getStaffByIdentifier('owner')!
+      const token = createStaffToken(user.id, user.tokenVersion, TEST_SECRET)
+      const req = createMockReq(token)
+      const result = authenticateAndAuthorize(req, mockEnv, FRONT_DESK_AND_ABOVE)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.user.role).toBe('OWNER')
+      }
+    })
+  })
+
+  describe('Test 14: KITCHEN cannot access room management (FRONT_DESK_AND_ABOVE)', () => {
+    const FRONT_DESK_AND_ABOVE: StaffRole[] = ['FRONT_DESK', 'MANAGER', 'OWNER']
+
+    it('should return 403 when KITCHEN tries to access room management endpoint', () => {
+      const user = getStaffByIdentifier('kitchen')!
+      const token = createStaffToken(user.id, user.tokenVersion, TEST_SECRET)
+      const req = createMockReq(token)
+      const result = authenticateAndAuthorize(req, mockEnv, FRONT_DESK_AND_ABOVE)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.statusCode).toBe(403)
+      }
+    })
+  })
+
+  describe('Test 15: Unauthenticated user cannot access room management', () => {
+    const FRONT_DESK_AND_ABOVE: StaffRole[] = ['FRONT_DESK', 'MANAGER', 'OWNER']
+
+    it('should return 401 when no token is provided for room management', () => {
+      const req = createMockReq()
+      const result = authenticateAndAuthorize(req, mockEnv, FRONT_DESK_AND_ABOVE)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.statusCode).toBe(401)
+      }
+    })
+
+    it('should return 401 when invalid token is provided for room management', () => {
+      const req = createMockReq('invalid-token')
+      const result = authenticateAndAuthorize(req, mockEnv, FRONT_DESK_AND_ABOVE)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.statusCode).toBe(401)
+      }
+    })
+  })
 })

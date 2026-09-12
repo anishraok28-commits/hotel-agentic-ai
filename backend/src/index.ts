@@ -294,17 +294,17 @@ function route(
     return
   }
 
-  // Room management: MANAGER and above
+  // Room management: FRONT_DESK and above
   if (method === 'GET' && url === '/api/admin/rooms') {
     if (!limiter.consume(clientKey(req))) { handleRateLimited(res); return }
-    const user = requireAuth(req, res, env, MANAGER_AND_ABOVE)
+    const user = requireAuth(req, res, env, FRONT_DESK_AND_ABOVE)
     if (user) handleListRooms(res)
     return
   }
 
   if (method === 'POST' && url === '/api/admin/rooms') {
     if (!limiter.consume(clientKey(req))) { handleRateLimited(res); return }
-    const user = requireAuth(req, res, env, MANAGER_AND_ABOVE)
+    const user = requireAuth(req, res, env, FRONT_DESK_AND_ABOVE)
     if (user) void handleCreateRoom(req, res, env)
     return
   }
@@ -312,7 +312,7 @@ function route(
   const roomPatchMatch = url?.match(/^\/api\/admin\/rooms\/(\d+)$/)
   if (method === 'PATCH' && roomPatchMatch) {
     if (!limiter.consume(clientKey(req))) { handleRateLimited(res); return }
-    const user = requireAuth(req, res, env, MANAGER_AND_ABOVE)
+    const user = requireAuth(req, res, env, FRONT_DESK_AND_ABOVE)
     if (user) void handleUpdateRoom(req, res, Number(roomPatchMatch[1]))
     return
   }
@@ -320,7 +320,7 @@ function route(
   const roomDeleteMatch = url?.match(/^\/api\/admin\/rooms\/(\d+)$/)
   if (method === 'DELETE' && roomDeleteMatch) {
     if (!limiter.consume(clientKey(req))) { handleRateLimited(res); return }
-    const user = requireAuth(req, res, env, MANAGER_AND_ABOVE)
+    const user = requireAuth(req, res, env, FRONT_DESK_AND_ABOVE)
     if (user) handleDeleteRoom(res, Number(roomDeleteMatch[1]))
     return
   }

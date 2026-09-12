@@ -20,6 +20,7 @@ import type {
 } from '@/api/types'
 import type { FutureApiRoute } from '@/api/apiContract'
 import { appConfig, MOCK_API_ENABLED } from '@/config/appConfig'
+import { getAuthToken } from '@/auth/AuthContext'
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms))
@@ -189,8 +190,9 @@ export async function listRooms(): Promise<{ rooms: RoomData[] }> {
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const authToken = getAuthToken()
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
   }
 
   const response = await fetch(url, { method: 'GET', headers })
@@ -225,8 +227,9 @@ export async function createRoom(
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const authToken = getAuthToken()
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
   }
 
   const response = await fetch(url, {
@@ -264,8 +267,9 @@ export async function updateRoom(
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const authToken = getAuthToken()
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
   }
 
   const response = await fetch(url, {
@@ -296,8 +300,9 @@ export async function deleteRoom(
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const authToken = getAuthToken()
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
   }
 
   const response = await fetch(url, { method: 'DELETE', headers })
@@ -329,8 +334,9 @@ export async function reissueRoomQr(
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}/reissue-qr`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const authToken = getAuthToken()
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
   }
 
   const response = await fetch(url, { method: 'PATCH', headers })
@@ -355,8 +361,9 @@ export async function checkoutRoom(
 
   const url = `${appConfig.apiBaseUrl}/api/session/checkout`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const authToken = getAuthToken()
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`
   }
 
   const response = await fetch(url, {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { submit, checkOrderStatus, resetMockOrderState, fetchCurrentStay, checkoutRoom } from '@/api/mockTransport'
+import { submit, checkOrderStatus, resetMockOrderState, fetchCurrentStay, checkoutRoom, listRooms, createRoom } from '@/api/mockTransport'
 
 beforeEach(() => {
   resetMockOrderState()
@@ -8,6 +8,11 @@ beforeEach(() => {
 vi.mock('@/config/appConfig', () => ({
   MOCK_API_ENABLED: false,
   appConfig: { apiBaseUrl: 'http://test.local', environment: 'test' },
+}))
+
+const mockGetAuthToken = vi.fn()
+vi.mock('@/auth/AuthContext', () => ({
+  getAuthToken: (...args: unknown[]) => mockGetAuthToken(...args),
 }))
 
 const postJson = (
@@ -338,5 +343,58 @@ describe('checkoutRoom', () => {
     const result = await checkoutRoom(999)
     expect(result.ok).toBe(false)
     expect(result.message).toBe('No active stay')
+  })
+})
+
+describe('room management uses session token (not VITE_SERVICE_TOKEN)', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+    mockGetAuthToken.mockReset()
+  })
+
+  it('listRooms sends Authorization from getAuthToken, not appConfig.serviceToken', async () => {
+    mockGetAuthToken.mockReturnValue('session-jwt-token-abc')
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'ok', message: 'ok', data: { rooms: [] } }, true),
+    )
+    await listRooms()
+    const call = lastFetchCall(fetchMock)
+    expect(call.headers['Authorization']).toBe('Bearer session-jwt-token-abc')
+  })
+
+  it('listRooms omits Authorization when no session token exists', async () => {
+    mockGetAuthToken.mockReturnValue(null)
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'ok', message: 'ok', data: { rooms: [] } }, true),
+    )
+    await listRooms()
+    const call = lastFetchCall(fetchMock)
+    expect(call.headers['Authorization']).toBeUndefined()
+  })
+
+  it('createRoom sends Authorization from getAuthToken', async () => {
+    mockGetAuthToken.mockReturnValue('session-jwt-token-xyz')
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'ok', message: 'ok', data: { room: { roomNumber: 101 } } }, true),
+    )
+    await createRoom(101)
+    const call = lastFetchCall(fetchMock)
+    expect(call.headers['Authorization']).toBe('Bearer session-jwt-token-xyz')
+    expect(call.url).toBe('http://test.local/api/admin/rooms')
+    expect(call.method).toBe('POST')
+  })
+
+  it('checkoutRoom sends Authorization from getAuthToken', async () => {
+    mockGetAuthToken.mockReturnValue('session-jwt-token-chk')
+    fetchMock.mockResolvedValue(
+      postJson({ status: 'ok', message: 'Checked out' }, true),
+    )
+    await checkoutRoom(301)
+    const call = lastFetchCall(fetchMock)
+    expect(call.headers['Authorization']).toBe('Bearer session-jwt-token-chk')
+    expect(call.url).toBe('http://test.local/api/session/checkout')
   })
 })
