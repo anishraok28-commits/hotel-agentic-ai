@@ -635,7 +635,7 @@ function pathForRoute(route: FutureApiRoute): string {
  */
 export async function listAdminOrders(
   statusFilter?: string,
-): Promise<{ orders: StaffOrder[] }> {
+): Promise<{ orders: StaffOrder[]; error?: string }> {
   if (MOCK_API_ENABLED) {
     await sleep(300)
     if (!mockOrderState) return { orders: [] }
@@ -660,12 +660,25 @@ export async function listAdminOrders(
   if (staffToken) {
     headers['Authorization'] = `Bearer ${staffToken}`
   }
-  const response = await fetch(url, {
-    method: 'GET',
-    headers,
-  })
 
-  if (!response.ok) return { orders: [] }
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'GET', headers })
+  } catch {
+    return { orders: [], error: 'Could not reach the backend service.' }
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    console.warn(
+      '[Admin Orders] Access denied (401/403). Insufficient role or expired session.',
+    )
+    return { orders: [], error: 'Access denied. You lack the required role or your session has expired.' }
+  }
+
+  if (!response.ok) {
+    return { orders: [], error: `Server error (${response.status}).` }
+  }
+
   const body = (await response.json()) as { data?: { orders?: StaffOrder[] } }
   return { orders: body.data?.orders ?? [] }
 }
@@ -720,6 +733,19 @@ export async function updateOrderStatus(
       signal: controller.signal,
     })
     clearTimeout(timer)
+
+    if (response.status === 401 || response.status === 403) {
+      console.warn(
+        '[Order Status] Access denied (401/403). Insufficient role or expired session.',
+      )
+      return {
+        status: 'error',
+        requestId: nextRequestId(),
+        message: 'Access denied. You lack the required role or your session has expired.',
+        code: 'AUTH_REQUIRED',
+      }
+    }
+
     const body = await parseResponseBody(response)
     if (isSuccessResponse(body)) return body
     if (isErrorResponse(body)) return body

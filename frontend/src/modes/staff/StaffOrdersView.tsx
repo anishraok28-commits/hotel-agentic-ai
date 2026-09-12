@@ -56,7 +56,11 @@ export function StaffOrdersView() {
     try {
       const statusParam = filter === 'all' ? undefined : filter
       const result = await listAdminOrders(statusParam)
-      setOrders(result.orders)
+      if (result.error) {
+        setError(result.error)
+      } else {
+        setOrders(result.orders)
+      }
     } catch {
       setError('Failed to load orders.')
     } finally {
