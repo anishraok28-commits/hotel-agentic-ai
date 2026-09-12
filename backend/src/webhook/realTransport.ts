@@ -61,6 +61,7 @@ export function createRealTransport(env: EnvConfig): WebhookTransport {
         clearTimeout(timer)
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
+          console.error(`[Webhook] Make.com webhook timed out (${workflow})`)
           return {
             status: 'error',
             requestId: crypto.randomUUID(),
@@ -68,6 +69,7 @@ export function createRealTransport(env: EnvConfig): WebhookTransport {
             code: 'AUTOMATION_FAILED',
           }
         }
+        console.error(`[Webhook] Make.com webhook request failed (${workflow}):`, err)
         return {
           status: 'error',
           requestId: crypto.randomUUID(),
@@ -77,6 +79,7 @@ export function createRealTransport(env: EnvConfig): WebhookTransport {
       }
 
       if (!response.ok) {
+        console.error(`[Webhook] Make.com returned HTTP ${response.status} (${workflow})`)
         return {
           status: 'error',
           requestId: crypto.randomUUID(),
@@ -89,6 +92,7 @@ export function createRealTransport(env: EnvConfig): WebhookTransport {
       try {
         data = (await response.json()) as Record<string, unknown>
       } catch {
+        console.error(`[Webhook] Make.com returned invalid JSON (${workflow})`)
         return {
           status: 'error',
           requestId: crypto.randomUUID(),

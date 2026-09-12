@@ -137,7 +137,8 @@ export async function handleConcierge(
     }
 
     sendJson(res, statusCode, response)
-  } catch {
+  } catch (err) {
+    console.error('[Concierge Webhook Error]:', err)
     sendJson(res, 502, {
       status: 'error',
       requestId: crypto.randomUUID(),
@@ -348,7 +349,8 @@ export async function handleRoomService(
     }
 
     sendJson(res, statusCode, clientResponse)
-  } catch {
+  } catch (err) {
+    console.error('[Room Service Webhook Error]:', err)
     const errorResponse = {
       status: 'error' as const,
       requestId: crypto.randomUUID(),
@@ -492,7 +494,8 @@ export async function handleLateCheckout(
     }
 
     sendJson(res, statusCode, clientResponse)
-  } catch {
+  } catch (err) {
+    console.error('[Late Checkout Webhook Error]:', err)
     sendJson(res, 502, {
       status: 'error',
       requestId: crypto.randomUUID(),
