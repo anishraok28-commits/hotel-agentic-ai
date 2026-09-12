@@ -1983,3 +1983,84 @@ describe('Security: staff checkout requires auth', () => {
     expect(res.status).toBe(401)
   })
 })
+
+describe('Empty guestId/sessionId recovery via qrToken', () => {
+  it('reclaims existing session when guestId and sessionId are empty strings', async () => {
+    const roomId = 2001
+    const qrToken = generateQrToken(roomId, env.qrTokenSecret)
+    createRoom(roomId, qrToken)
+
+    // Seed an active session with known credentials
+    const knownGuestId = 'guest_existing_123'
+    const knownSessionId = 'session_existing_456'
+    const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+    checkIn(roomId, knownGuestId, knownSessionId, ttlMs, qrToken)
+
+    // Confirm session exists with the known IDs
+    const sessionBefore = getSession(roomId)
+    expect(sessionBefore).toBeDefined()
+    expect(sessionBefore!.guestId).toBe(knownGuestId)
+    expect(sessionBefore!.sessionId).toBe(knownSessionId)
+
+    // Submit order with EMPTY guestId and sessionId
+    const res = await request('POST', '/api/room-service', {}, {
+      guestId: '',
+      sessionId: '',
+      roomNumber: roomId,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+
+    // Must succeed (202 accepted)
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    expect(body.status).toBe('accepted')
+
+    // Order must be attached to the EXISTING session credentials
+    expect(body.data.guestId).toBe(knownGuestId)
+    expect(body.data.sessionId).toBe(knownSessionId)
+
+    // Session must still be the original — no orphan created
+    const sessionAfter = getSession(roomId)
+    expect(sessionAfter).toBeDefined()
+    expect(sessionAfter!.guestId).toBe(knownGuestId)
+    expect(sessionAfter!.sessionId).toBe(knownSessionId)
+  })
+
+  it('creates a new session when no session exists and guestId/sessionId are empty', async () => {
+    const roomId = 2002
+    const qrToken = generateQrToken(roomId, env.qrTokenSecret)
+    createRoom(roomId, qrToken)
+
+    // No checkIn — no session exists for this room
+    const sessionBefore = getSession(roomId)
+    expect(sessionBefore).toBeUndefined()
+
+    // Submit order with empty guestId/sessionId
+    const res = await request('POST', '/api/room-service', {}, {
+      guestId: '',
+      sessionId: '',
+      roomNumber: roomId,
+      items: [{ itemId: 'menu.001', name: 'Club Sandwich', quantity: 1, unitPrice: 1200 }],
+      qrToken,
+      mode: 'QR_ROOM_SERVICE',
+    })
+
+    expect(res.status).toBe(202)
+    const body = JSON.parse(res.body)
+    expect(body.status).toBe('accepted')
+
+    // Server must have generated new session credentials
+    expect(body.data.guestId).toBeDefined()
+    expect(body.data.guestId).not.toBe('')
+    expect(body.data.sessionId).toBeDefined()
+    expect(body.data.sessionId).not.toBe('')
+
+    // Exactly one session now exists for this room
+    const sessionAfter = getSession(roomId)
+    expect(sessionAfter).toBeDefined()
+    expect(sessionAfter!.guestId).toBe(body.data.guestId)
+    expect(sessionAfter!.sessionId).toBe(body.data.sessionId)
+  })
+})

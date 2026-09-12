@@ -108,8 +108,12 @@ export function validateRoomServicePayload(payload: unknown): RoomServiceValidat
   const p = payload as Record<string, unknown>
   const errors: ValidationError[] = []
 
-  isValidIdentifier(p.guestId, 'guestId', errors)
-  isValidIdentifier(p.sessionId, 'sessionId', errors)
+  if (typeof p.guestId === 'string' && p.guestId.trim() !== '') {
+    isValidIdentifier(p.guestId, 'guestId', errors)
+  }
+  if (typeof p.sessionId === 'string' && p.sessionId.trim() !== '') {
+    isValidIdentifier(p.sessionId, 'sessionId', errors)
+  }
   if (
     typeof p.roomNumber !== 'number' ||
     !Number.isInteger(p.roomNumber) ||

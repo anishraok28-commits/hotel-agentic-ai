@@ -656,8 +656,9 @@ export async function listAdminOrders(
   const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : ''
   const url = `${appConfig.apiBaseUrl}/api/admin/orders${params}`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const staffToken = getAuthToken()
+  if (staffToken) {
+    headers['Authorization'] = `Bearer ${staffToken}`
   }
   const response = await fetch(url, {
     method: 'GET',
@@ -703,8 +704,9 @@ export async function updateOrderStatus(
 
   const url = `${appConfig.apiBaseUrl}/api/order/update-status`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const staffToken = getAuthToken()
+  if (staffToken) {
+    headers['Authorization'] = `Bearer ${staffToken}`
   }
 
   const controller = new AbortController()

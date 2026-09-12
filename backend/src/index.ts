@@ -28,6 +28,7 @@ import { getOrdersByGuest } from './order/store.js'
 import {
   getStaffByIdentifier,
   getStaffById,
+  getStaffCount,
   verifyStaffCredentials,
   createStaffUser,
   listStaffUsers,
@@ -1558,9 +1559,9 @@ function main(): void {
     // Auto-seed default staff accounts when the table is empty.
     // This only fires on first deploy or after a complete data wipe.
     // It never overwrites existing users.
-    const existingUser = getStaffByIdentifier('frontdesk')
-    if (!existingUser) {
-      console.warn('⚠️  STAFF SEED: staff_users table is empty — seeding 4 default accounts (must_change_password=true). This should only happen on first deploy.')
+    const staffCount = getStaffCount()
+    if (staffCount === 0) {
+      console.warn('[DB] Zero staff users found. Seeded default staff credentials.')
       const defaults = [
         { id: 'staff-001', name: 'Front Desk Staff', identifier: 'frontdesk', role: 'FRONT_DESK' as StaffRole, password: 'hotel123' },
         { id: 'staff-002', name: 'Kitchen Staff', identifier: 'kitchen', role: 'KITCHEN' as StaffRole, password: 'hotel123' },

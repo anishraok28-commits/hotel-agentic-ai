@@ -118,6 +118,13 @@ export function QRRoomServiceView() {
   const qrToken = guestCtx.qrToken || storedGuestCtx?.qrToken || qrTokenFromUrl
   const initialRoom = verifiedRoom !== null ? String(verifiedRoom) : ''
 
+  // Gate: prevent order submission until session credentials are hydrated.
+  const isSessionReady = Boolean(
+    qrToken &&
+    guestCtx.guestId &&
+    guestCtx.sessionId,
+  )
+
   const [filter, setFilter] = useState<FilterId>('all')
   const [roomNumber, setRoomNumber] = useState(initialRoom)
   const [notes, setNotes] = useState('')
@@ -420,7 +427,9 @@ export function QRRoomServiceView() {
             </div>
             <p className="muted">Room {roomNumber || '—'}</p>
             <div className="state__actions">
-              <Button onClick={handleRun}>Confirm order</Button>
+              <Button onClick={handleRun} disabled={!isSessionReady}>
+                {isSessionReady ? 'Confirm order' : 'Connecting room session\u2026'}
+              </Button>
               <Button variant="secondary" onClick={() => setConfirming(false)}>
                 Go back
               </Button>
@@ -552,7 +561,9 @@ export function QRRoomServiceView() {
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setNotes(event.target.value)}
                 />
                 <div className="form__actions">
-                  <Button type="submit">Review order</Button>
+                  <Button type="submit" disabled={!isSessionReady}>
+                    {isSessionReady ? 'Review order' : 'Connecting room session\u2026'}
+                  </Button>
                 </div>
               </form>
             )}

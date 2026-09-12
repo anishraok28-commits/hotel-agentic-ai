@@ -5,7 +5,8 @@
  * Backend enforces MANAGER/OWNER role requirements.
  */
 
-import { appConfig } from '@/config/appConfig'
+import { appConfig, MOCK_API_ENABLED } from '@/config/appConfig'
+import { getAuthToken } from '@/auth/AuthContext'
 
 export interface DashboardMetrics {
   roomServiceRevenue: number
@@ -26,8 +27,7 @@ export interface DashboardMetrics {
  * In real mode, GETs /api/admin/dashboard with Bearer auth.
  */
 export async function fetchDashboard(): Promise<DashboardMetrics> {
-  if (appConfig.env === 'local' && !appConfig.serviceToken) {
-    // Mock mode: return placeholder data
+  if (MOCK_API_ENABLED) {
     return {
       roomServiceRevenue: 0,
       activeOrders: { NEW: 0, PREPARING: 0, READY: 0 },
@@ -37,8 +37,9 @@ export async function fetchDashboard(): Promise<DashboardMetrics> {
 
   const url = `${appConfig.apiBaseUrl}/api/admin/dashboard`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (appConfig.serviceToken) {
-    headers['Authorization'] = `Bearer ${appConfig.serviceToken}`
+  const token = getAuthToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
   }
 
   const response = await fetch(url, { method: 'GET', headers })

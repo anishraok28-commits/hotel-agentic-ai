@@ -56,6 +56,13 @@ function rowToUser(row: StaffUserRow): StaffUser {
   }
 }
 
+/** Get the total count of staff users in the database. */
+export function getStaffCount(): number {
+  const db = getDatabase()
+  const row = db.prepare('SELECT COUNT(*) as count FROM staff_users').get() as { count: number }
+  return row.count
+}
+
 /** Get a staff user by their identifier (email/employee ID). */
 export function getStaffByIdentifier(identifier: string): StaffUser | undefined {
   const db = getDatabase()
