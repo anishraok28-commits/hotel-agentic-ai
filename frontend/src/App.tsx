@@ -44,6 +44,18 @@ export function RootLanding() {
   const navigate = useNavigate()
   const qrToken = searchParams.get('token') ?? ''
 
+  // Synchronous capture: persist the QR token to sessionStorage before
+  // any async init or navigation strips it from the URL bar.
+  const params = new URLSearchParams(window.location.search)
+  const incomingToken = params.get('token') || params.get('qr')
+  if (incomingToken) {
+    sessionStorage.setItem('qrToken', incomingToken)
+    const existing = sessionStorage.getItem('hotel-guest-context')
+    if (!existing) {
+      sessionStorage.setItem('hotel-guest-context', JSON.stringify({ qrToken: incomingToken }))
+    }
+  }
+
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -132,12 +144,12 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
   })
 
   // RootLanding saves guest context to sessionStorage asynchronously
-  // (after an API call). Read at render time to pick up any context
-  // that was saved between our initial useState read and now.
-  // React allows conditional setState during render (adjusting state
-  // based on props/state) — this fires at most once per mount.
+  // (after an API call). Re-read on every render to pick up any
+  // context that was saved between our initial useState read and now.
+  // Guard against infinite loops: only update when the stored qrToken
+  // differs from the current context qrToken.
   const stored = loadGuestContext()
-  if (stored && stored.qrToken && !context.qrToken) {
+  if (stored && stored.qrToken !== context.qrToken) {
     setContext((prev) => ({
       ...prev,
       roomNumber: stored.roomNumber,
