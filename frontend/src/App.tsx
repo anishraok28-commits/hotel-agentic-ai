@@ -203,6 +203,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               >
+                <Route index element={<Navigate to="/staff/orders" replace />} />
                 <Route path="orders" element={<StaffOrdersView />} />
                 <Route path="rooms-qr" element={<StaffRoomsQRView />} />
                 <Route

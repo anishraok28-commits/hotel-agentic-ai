@@ -2,9 +2,12 @@ import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/auth/AuthContext'
 
-/** Simple 404 page shown when no route matches. */
+/** 404 page shown when no route matches. Offers context-aware navigation. */
 export function NotFound() {
+  const { isAuthenticated } = useAuth()
+
   return (
     <section className="mode-page">
       <PageHeader
@@ -19,6 +22,15 @@ export function NotFound() {
             <Link to="/">
               <Button>Return to home</Button>
             </Link>
+            {isAuthenticated ? (
+              <Link to="/staff">
+                <Button variant="secondary">Staff dashboard</Button>
+              </Link>
+            ) : (
+              <Link to="/login">
+                <Button variant="secondary">Staff login</Button>
+              </Link>
+            )}
           </div>
         </div>
       </Card>
