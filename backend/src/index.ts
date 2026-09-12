@@ -1554,6 +1554,24 @@ function main(): void {
   try {
     getDatabase(env.dbPath)
     console.log(`Database opened: ${env.dbPath}`)
+
+    // Auto-seed default staff accounts when the table is empty.
+    // This only fires on first deploy or after a complete data wipe.
+    // It never overwrites existing users.
+    const existingUser = getStaffByIdentifier('frontdesk')
+    if (!existingUser) {
+      console.warn('⚠️  STAFF SEED: staff_users table is empty — seeding 4 default accounts (must_change_password=true). This should only happen on first deploy.')
+      const defaults = [
+        { id: 'staff-001', name: 'Front Desk Staff', identifier: 'frontdesk', role: 'FRONT_DESK' as StaffRole, password: 'hotel123' },
+        { id: 'staff-002', name: 'Kitchen Staff', identifier: 'kitchen', role: 'KITCHEN' as StaffRole, password: 'hotel123' },
+        { id: 'staff-003', name: 'Hotel Manager', identifier: 'manager', role: 'MANAGER' as StaffRole, password: 'hotel123' },
+        { id: 'staff-004', name: 'Hotel Owner', identifier: 'owner', role: 'OWNER' as StaffRole, password: 'hotel123' },
+      ]
+      for (const s of defaults) {
+        createStaffUser(s.id, s.name, s.identifier, s.role, s.password, true)
+      }
+      console.warn('⚠️  STAFF SEED: 4 default accounts created. All require password change on first login.')
+    }
   } catch (err) {
     console.error('Database startup failed:', (err as Error).message)
     process.exit(1)
