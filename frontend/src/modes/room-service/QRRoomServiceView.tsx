@@ -118,11 +118,12 @@ export function QRRoomServiceView() {
   const qrToken = guestCtx.qrToken || storedGuestCtx?.qrToken || qrTokenFromUrl
   const initialRoom = verifiedRoom !== null ? String(verifiedRoom) : ''
 
-  // Gate: prevent order submission until session credentials are hydrated.
+  // Gate: Room Service is only usable when a real QR token AND valid
+  // session identifiers are all present. guestId/sessionId alone are
+  // never sufficient — the backend mandates a QR token for room-service
+  // submissions (see handleRoomService).
   const isSessionReady = Boolean(
-    qrToken &&
-    guestCtx.guestId &&
-    guestCtx.sessionId,
+    qrToken && guestCtx.guestId && guestCtx.sessionId,
   )
 
   const [filter, setFilter] = useState<FilterId>('all')
@@ -241,7 +242,11 @@ export function QRRoomServiceView() {
       qrToken,
       mode: 'QR_ROOM_SERVICE',
     }
-    await run(payload)
+    try {
+      await run(payload)
+    } catch (err) {
+      console.error('[Order Error]', err)
+    }
   }, [run, roomNumber, cart, notes, qrToken, guestCtx.guestId, guestCtx.sessionId])
 
   function resetForm() {

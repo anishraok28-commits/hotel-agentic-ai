@@ -159,6 +159,40 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
     }))
   }
 
+  // Demo mode: when the URL has ?room=XXX but no QR token, initialize
+  // demo guest/session identifiers so Concierge, Late Checkout, and
+  // QR Room Service can submit payloads without hitting "Validation failed".
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const roomParam = params.get('room')
+    const tokenParam = params.get('token')
+    if (!roomParam || tokenParam) return
+
+    const roomNumber = Number(roomParam)
+    if (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 9999) return
+
+    const stored = loadGuestContext()
+    if (stored && stored.guestId && stored.sessionId) return
+
+    const fallbackGuestId = `guest-${roomNumber}-${Date.now().toString(36)}`
+    const fallbackSessionId = `sess-${Math.random().toString(36).substring(2, 9)}`
+    const demoCtx: GuestContextValue = {
+      roomNumber,
+      guestId: fallbackGuestId,
+      sessionId: fallbackSessionId,
+      qrToken: '',
+      updateSession: () => {},
+    }
+    saveGuestContext(demoCtx)
+    setContext((prev) => ({
+      ...prev,
+      roomNumber,
+      guestId: fallbackGuestId,
+      sessionId: fallbackSessionId,
+      qrToken: '',
+    }))
+  }, [])
+
   const updateSession = useCallback((guestId: string, sessionId: string) => {
     setContext((prev) => {
       const next = { ...prev, guestId, sessionId }
