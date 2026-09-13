@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { AuthProvider } from '@/auth/AuthContext'
 import { NotFound } from './NotFound'
 
 function renderNotFound(path = '/nonexistent') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <NotFound />
+      <AuthProvider>
+        <NotFound />
+      </AuthProvider>
     </MemoryRouter>,
   )
 }

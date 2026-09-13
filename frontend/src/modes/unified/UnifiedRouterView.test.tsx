@@ -1,19 +1,22 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from '@/auth/AuthContext'
 import { UnifiedRouterView } from './UnifiedRouterView'
 import { NotFound } from '@/components/state/NotFound'
 
 function renderUnified(path = '/') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/" element={<UnifiedRouterView />} />
-        <Route path="/concierge" element={<p>AI Concierge View Rendered</p>} />
-        <Route path="/room-service" element={<p>QR Room Service View Rendered</p>} />
-        <Route path="/late-checkout" element={<p>Late Checkout View Rendered</p>} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<UnifiedRouterView />} />
+          <Route path="/concierge" element={<p>AI Concierge View Rendered</p>} />
+          <Route path="/room-service" element={<p>QR Room Service View Rendered</p>} />
+          <Route path="/late-checkout" element={<p>Late Checkout View Rendered</p>} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AuthProvider>
     </MemoryRouter>,
   )
 }

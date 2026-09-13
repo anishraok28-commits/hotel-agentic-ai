@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { useModeSubmit } from '@/hooks/useModeSubmit'
-import { useGuestContext } from '@/context/GuestContext'
+import { useGuestContext, loadGuestContext } from '@/context/GuestContext'
 import { useStayContext } from '@/context/StayContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -32,6 +32,12 @@ export function AIConciergeView() {
   const { result, run, reset } = useModeSubmit(mode.id)
   const guestCtx = useGuestContext()
   const stayCtx = useStayContext()
+  const storedGuestCtx = loadGuestContext()
+  const guestId = guestCtx.guestId || storedGuestCtx?.guestId || ''
+  const sessionId = guestCtx.sessionId || storedGuestCtx?.sessionId || ''
+
+  // Gate: Concierge submission requires valid session identifiers.
+  const isSessionReady = Boolean(guestId && sessionId)
   const [roomNumber, setRoomNumber] = useState(
     guestCtx.roomNumber ? String(guestCtx.roomNumber) : '',
   )
@@ -72,8 +78,8 @@ export function AIConciergeView() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const payload: ConciergeRequest = {
-      guestId: guestCtx.guestId,
-      sessionId: guestCtx.sessionId,
+      guestId,
+      sessionId,
       roomNumber: Number(roomNumber),
       request: request.trim(),
       mode: 'AI_CONCIERGE',
@@ -221,7 +227,7 @@ export function AIConciergeView() {
                 }
               />
               <div className="form__actions">
-                <Button type="submit">Send to concierge</Button>
+                <Button type="submit" disabled={!isSessionReady}>Send to concierge</Button>
               </div>
             </form>
           </Card>

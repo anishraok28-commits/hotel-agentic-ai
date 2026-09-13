@@ -137,7 +137,7 @@ describe('QRRoomServiceView', () => {
 
   it('shows a confirmation step before submitting', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -153,7 +153,7 @@ describe('QRRoomServiceView', () => {
 
   it('allows going back from confirmation to edit the order', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -169,7 +169,7 @@ describe('QRRoomServiceView', () => {
 
   it('submits the order after confirmation and shows orderId', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -191,7 +191,7 @@ describe('QRRoomServiceView', () => {
 
   it('displays server-returned total in confirmation', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -206,7 +206,7 @@ describe('QRRoomServiceView', () => {
 
   it('displays server-returned items in confirmation', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -222,7 +222,7 @@ describe('QRRoomServiceView', () => {
 
   it('refreshes order status on button click', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -235,7 +235,7 @@ describe('QRRoomServiceView', () => {
     await user.click(screen.getByRole('button', { name: /Refresh status/ }))
 
     expect(await screen.findByText('Being prepared')).toBeInTheDocument()
-    expect(mocks.checkOrderStatus).toHaveBeenCalledWith('test-order-123', { guestId: '', sessionId: '', qrToken: '' })
+    expect(mocks.checkOrderStatus).toHaveBeenCalledWith('test-order-123', { guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
   })
 
   it('handles status refresh error without losing confirmation data', async () => {
@@ -246,7 +246,7 @@ describe('QRRoomServiceView', () => {
       message: 'Order not found',
       code: 'NOT_FOUND',
     }))
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -307,7 +307,7 @@ describe('QRRoomServiceView', () => {
         sessionId: 'session-456',
       },
     }))
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')
@@ -322,7 +322,7 @@ describe('QRRoomServiceView', () => {
 
   it('resets the cart when placing another order', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1', qrToken: 'test-qr-token' })
 
     await user.click(screen.getByRole('button', { name: /Add.*Club Sandwich/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '305')

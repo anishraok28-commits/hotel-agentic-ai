@@ -153,7 +153,7 @@ describe('AIConciergeView', () => {
 
   it('resets to the form when starting another request', async () => {
     const user = userEvent.setup()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1' })
 
     await user.type(screen.getByRole('textbox', { name: /Your request/ }), 'Anything')
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '100')
@@ -170,7 +170,7 @@ describe('AIConciergeView', () => {
     const user = userEvent.setup()
     mocks.failToggle.value = true
     void mockSubmit()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1' })
 
     await user.type(screen.getByRole('textbox', { name: /Your request/ }), 'Anything')
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '101')
@@ -189,7 +189,7 @@ describe('AIConciergeView', () => {
     const user = userEvent.setup()
     mocks.failToggle.value = true
     void mockSubmit()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1' })
 
     await user.type(screen.getByRole('textbox', { name: /Your request/ }), 'Book a table for tonight')
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '101')
@@ -209,7 +209,7 @@ describe('AIConciergeView', () => {
     const user = userEvent.setup()
     mocks.failToggle.value = true
     void mockSubmit()
-    renderView()
+    renderView({ guestId: 'g-1', sessionId: 's-1' })
 
     await user.click(screen.getByRole('button', { name: /Food & Dining/ }))
     await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '101')

@@ -146,10 +146,15 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
   // RootLanding saves guest context to sessionStorage asynchronously
   // (after an API call). Re-read on every render to pick up any
   // context that was saved between our initial useState read and now.
-  // Guard against infinite loops: only update when the stored qrToken
-  // differs from the current context qrToken.
+  // Guard against infinite loops: only update when stored values differ
+  // from the current context (any of qrToken, guestId, or sessionId).
   const stored = loadGuestContext()
-  if (stored && stored.qrToken !== context.qrToken) {
+  if (
+    stored &&
+    (stored.qrToken !== context.qrToken ||
+      stored.guestId !== context.guestId ||
+      stored.sessionId !== context.sessionId)
+  ) {
     setContext((prev) => ({
       ...prev,
       roomNumber: stored.roomNumber,

@@ -30,7 +30,12 @@ export function LateCheckoutView() {
   const verifiedRoom = guestCtx.roomNumber
   const storedGuestCtx = loadGuestContext()
   const qrToken = guestCtx.qrToken || storedGuestCtx?.qrToken || qrTokenFromUrl
+  const guestId = guestCtx.guestId || storedGuestCtx?.guestId || ''
+  const sessionId = guestCtx.sessionId || storedGuestCtx?.sessionId || ''
   const initialRoom = verifiedRoom ? String(verifiedRoom) : ''
+
+  // Gate: Late Checkout requires valid session identifiers and a QR token.
+  const isSessionReady = Boolean(qrToken && guestId && sessionId)
 
   const [roomNumber, setRoomNumber] = useState(initialRoom)
   const [hours, setHours] = useState<number>(2)
@@ -59,8 +64,8 @@ export function LateCheckoutView() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const payload: LateCheckoutRequest = {
-      guestId: guestCtx.guestId,
-      sessionId: guestCtx.sessionId,
+      guestId,
+      sessionId,
       roomNumber: Number(roomNumber),
       requestedTime: buildRequestedTime(hours),
       qrToken,
@@ -172,7 +177,7 @@ export function LateCheckoutView() {
                 disabled={!!verifiedRoom}
               />
               <div className="form__actions">
-                <Button type="submit">Request late checkout</Button>
+                <Button type="submit" disabled={!isSessionReady}>Request late checkout</Button>
               </div>
             </form>
           </Card>

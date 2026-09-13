@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { GuestContext } from '@/context/GuestContext'
 
 const mocks = vi.hoisted(() => ({
   submit: vi.fn(),
@@ -15,6 +16,20 @@ vi.mock('@/api/mockTransport', () => ({
 
 import { LateCheckoutView } from './LateCheckoutView'
 
+const defaultGuestContext: {
+  roomNumber: number | null
+  guestId: string
+  sessionId: string
+  qrToken: string
+  updateSession: (guestId: string, sessionId: string) => void
+} = {
+  roomNumber: null,
+  guestId: 'test-guest',
+  sessionId: 'test-session',
+  qrToken: 'test-qr-token',
+  updateSession: () => {},
+}
+
 async function mockSubmit() {
   mocks.submit.mockImplementation(async () => ({
     status: 'accepted',
@@ -24,10 +39,12 @@ async function mockSubmit() {
   }))
 }
 
-function renderView() {
+function renderView(contextOverrides?: Partial<typeof defaultGuestContext>) {
   return render(
     <MemoryRouter>
-      <LateCheckoutView />
+      <GuestContext.Provider value={{ ...defaultGuestContext, ...contextOverrides }}>
+        <LateCheckoutView />
+      </GuestContext.Provider>
     </MemoryRouter>,
   )
 }

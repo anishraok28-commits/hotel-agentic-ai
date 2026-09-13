@@ -85,7 +85,7 @@ describe('GuestContextProvider', () => {
     expect(screen.getByTestId('roomNumber')).toHaveTextContent('444')
   })
 
-  it('does not overwrite existing qrToken with a different stored value', () => {
+  it('syncs context from sessionStorage when stored values change', () => {
     sessionStorage.setItem('hotel-guest-context', JSON.stringify({
       roomNumber: 100,
       guestId: 'guest-first',
@@ -107,8 +107,11 @@ describe('GuestContextProvider', () => {
       rerender(<Root />)
     })
 
-    // Should NOT overwrite the existing qrToken
-    expect(screen.getByTestId('qrToken')).toHaveTextContent('first-token')
+    // Guard detects all three fields changed → context syncs from sessionStorage
+    expect(screen.getByTestId('qrToken')).toHaveTextContent('second-token')
+    expect(screen.getByTestId('guestId')).toHaveTextContent('guest-second')
+    expect(screen.getByTestId('sessionId')).toHaveTextContent('session-second')
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('200')
   })
 
   it('provides default context values when no stored context', () => {
