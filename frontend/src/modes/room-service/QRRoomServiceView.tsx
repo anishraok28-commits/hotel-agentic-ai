@@ -120,12 +120,14 @@ export function QRRoomServiceView() {
   const sessionId = guestCtx.sessionId || storedGuestCtx?.sessionId || ''
   const initialRoom = verifiedRoom !== null ? String(verifiedRoom) : ''
 
-  // Gate: Room Service is only usable when a real QR token AND valid
-  // session identifiers are all present. guestId/sessionId alone are
-  // never sufficient — the backend mandates a QR token for room-service
-  // submissions (see handleRoomService).
+  // Gate: ready when the React context has a full session, or a QR token
+  // was persisted independently, or demo/session identifiers survived in
+  // storage after the URL query string was dropped.
+  const storedQrToken = sessionStorage.getItem('qrToken')
   const isSessionReady = Boolean(
-    qrToken && guestId && sessionId,
+    (guestCtx.qrToken && guestCtx.guestId && guestCtx.sessionId) ||
+      storedQrToken ||
+      (guestId && sessionId),
   )
 
   const [filter, setFilter] = useState<FilterId>('all')

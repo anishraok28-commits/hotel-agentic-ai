@@ -34,11 +34,20 @@ export function LateCheckoutView() {
   const sessionId = guestCtx.sessionId || storedGuestCtx?.sessionId || ''
   const initialRoom = verifiedRoom ? String(verifiedRoom) : ''
 
-  // Gate: Late Checkout requires valid session identifiers and a QR token.
-  const isSessionReady = Boolean(qrToken && guestId && sessionId)
+  const storedQrToken = sessionStorage.getItem('qrToken')
+  const storedGuestId = sessionStorage.getItem('guestId') || guestId
+  const storedSessionId = sessionStorage.getItem('sessionId') || sessionId
+  const hasCredentials = Boolean(
+    (guestCtx.qrToken && guestCtx.guestId && guestCtx.sessionId) ||
+      storedQrToken ||
+      (storedGuestId && storedSessionId) ||
+      (qrToken && guestId && sessionId),
+  )
 
   const [roomNumber, setRoomNumber] = useState(initialRoom)
   const [hours, setHours] = useState<number>(2)
+
+  const isSessionReady = hasCredentials && Number.isFinite(hours)
 
   // When context changes, update room number
   useEffect(() => {
@@ -64,11 +73,11 @@ export function LateCheckoutView() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const payload: LateCheckoutRequest = {
-      guestId,
-      sessionId,
+      guestId: storedGuestId,
+      sessionId: storedSessionId,
       roomNumber: Number(roomNumber),
       requestedTime: buildRequestedTime(hours),
-      qrToken,
+      qrToken: qrToken || storedQrToken || '',
       mode: 'LATE_CHECKOUT',
     }
     void run(payload)
@@ -135,7 +144,9 @@ export function LateCheckoutView() {
                       name="extension"
                       value={option.hours}
                       checked={selectedOption}
-                      onChange={() => setHours(option.hours)}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        setHours(Number(event.target.value))
+                      }}
                     />
                     <span className="radio-card__copy">
                       <span className="radio-card__title">{option.label}</span>
@@ -177,7 +188,9 @@ export function LateCheckoutView() {
                 disabled={!!verifiedRoom}
               />
               <div className="form__actions">
-                <Button type="submit" disabled={!isSessionReady}>Request late checkout</Button>
+                <Button type="submit" disabled={!isSessionReady}>
+                  Request late checkout
+                </Button>
               </div>
             </form>
           </Card>

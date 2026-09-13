@@ -30,6 +30,7 @@ import {
   GuestContext,
   saveGuestContext,
   loadGuestContext,
+  hydrateGuestContext,
   type GuestContextValue,
 } from '@/context/GuestContext'
 import { StayProvider } from '@/context/StayContext'
@@ -59,8 +60,9 @@ export function RootLanding() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Stay on the current URL when there is no QR token so demo landings
+    // like /?room=101 keep their query string for session hydration.
     if (!qrToken) {
-      navigate('/', { replace: true })
       return
     }
 
@@ -132,16 +134,7 @@ export function RootLanding() {
  * provider picks it up without requiring an extra re-render trigger.
  */
 export function GuestContextProvider({ children }: { children: React.ReactNode }) {
-  const [context, setContext] = useState<GuestContextValue>(() => {
-    const stored = loadGuestContext()
-    return {
-      roomNumber: stored?.roomNumber ?? null,
-      guestId: stored?.guestId ?? '',
-      sessionId: stored?.sessionId ?? '',
-      qrToken: stored?.qrToken ?? '',
-      updateSession: () => {},
-    }
-  })
+  const [context, setContext] = useState<GuestContextValue>(() => hydrateGuestContext())
 
   // RootLanding saves guest context to sessionStorage asynchronously
   // (after an API call). Re-read on every render to pick up any
@@ -200,7 +193,11 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
 
   const updateSession = useCallback((guestId: string, sessionId: string) => {
     setContext((prev) => {
-      const next = { ...prev, guestId, sessionId }
+      // If React state hasn't hydrated the qrToken yet (e.g. re-sync hasn't
+      // committed), fall back to the value RootLanding already persisted in
+      // sessionStorage so we don't overwrite it with an empty string.
+      const qrToken = prev.qrToken || loadGuestContext()?.qrToken || ''
+      const next = { ...prev, guestId, sessionId, qrToken }
       saveGuestContext(next)
       return next
     })
