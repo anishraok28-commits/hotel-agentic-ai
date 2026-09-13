@@ -346,7 +346,7 @@ describe('checkoutRoom', () => {
   })
 })
 
-describe('room management uses session token (not VITE_SERVICE_TOKEN)', () => {
+describe('room management uses session token for Authorization', () => {
   const fetchMock = vi.fn()
 
   beforeEach(() => {
@@ -355,7 +355,7 @@ describe('room management uses session token (not VITE_SERVICE_TOKEN)', () => {
     mockGetAuthToken.mockReset()
   })
 
-  it('listRooms sends Authorization from getAuthToken, not appConfig.serviceToken', async () => {
+  it('listRooms sends Authorization from getAuthToken session token', async () => {
     mockGetAuthToken.mockReturnValue('session-jwt-token-abc')
     fetchMock.mockResolvedValue(
       postJson({ status: 'ok', message: 'ok', data: { rooms: [] } }, true),

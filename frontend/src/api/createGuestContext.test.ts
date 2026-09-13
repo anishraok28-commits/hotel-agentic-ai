@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/config/appConfig', () => ({
   MOCK_API_ENABLED: true,
-  appConfig: { apiBaseUrl: 'http://test.local', serviceToken: '' },
+  appConfig: { apiBaseUrl: 'http://test.local' },
 }))
 
 describe('createGuestContext', () => {

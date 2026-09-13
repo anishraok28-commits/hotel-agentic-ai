@@ -1,9 +1,13 @@
 import { NavLink } from 'react-router-dom'
 import { MODE_ORDER, MODES } from '@/modes/modeRegistry'
 import { Icon } from '@/components/icon/Icon'
+import { useAuth } from '@/auth/AuthContext'
 
-/** Navigation links for all four frontend modes (unified last). */
+/** Navigation links for all four frontend modes (unified last). Hidden when staff is authenticated. */
 export function ModeNav() {
+  const { isAuthenticated } = useAuth()
+  if (isAuthenticated) return null
+
   return (
     <nav className="mode-nav" aria-label="Hotel services">
       <ul className="mode-nav__list">

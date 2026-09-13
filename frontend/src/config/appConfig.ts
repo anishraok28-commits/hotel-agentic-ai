@@ -12,8 +12,6 @@ export interface AppConfig {
   readonly apiBaseUrl: string
   /** Runtime environment: local | staging | production. */
   readonly env: 'local' | 'staging' | 'production'
-  /** Bearer token for staff/admin API calls. Empty string when unset. */
-  readonly serviceToken: string
 }
 
 function parseEnv(): AppConfig {
@@ -24,7 +22,6 @@ function parseEnv(): AppConfig {
   return {
     apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
     env,
-    serviceToken: import.meta.env.VITE_SERVICE_TOKEN ?? '',
   }
 }
 

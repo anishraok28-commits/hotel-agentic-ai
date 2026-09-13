@@ -112,10 +112,12 @@ export function QRRoomServiceView() {
 
   // Use verified room and token from GuestContext only (never from URL room param).
   // Also check sessionStorage directly as a fallback: the React context may not
-  // have hydrated yet when the component first renders after a page refresh.
+  // have hydrated yet on first render after a page refresh or QR scan.
   const verifiedRoom = guestCtx.roomNumber
   const storedGuestCtx = loadGuestContext()
   const qrToken = guestCtx.qrToken || storedGuestCtx?.qrToken || qrTokenFromUrl
+  const guestId = guestCtx.guestId || storedGuestCtx?.guestId || ''
+  const sessionId = guestCtx.sessionId || storedGuestCtx?.sessionId || ''
   const initialRoom = verifiedRoom !== null ? String(verifiedRoom) : ''
 
   // Gate: Room Service is only usable when a real QR token AND valid
@@ -123,7 +125,7 @@ export function QRRoomServiceView() {
   // never sufficient — the backend mandates a QR token for room-service
   // submissions (see handleRoomService).
   const isSessionReady = Boolean(
-    qrToken && guestCtx.guestId && guestCtx.sessionId,
+    qrToken && guestId && sessionId,
   )
 
   const [filter, setFilter] = useState<FilterId>('all')
@@ -229,8 +231,8 @@ export function QRRoomServiceView() {
   const handleRun = useCallback(async () => {
     setConfirming(false)
     const payload: RoomServiceRequest = {
-      guestId: guestCtx.guestId,
-      sessionId: guestCtx.sessionId,
+      guestId,
+      sessionId,
       roomNumber: Number(roomNumber),
       items: cart.map(({ itemId, name, quantity, unitPrice }) => ({
         itemId,
@@ -247,7 +249,7 @@ export function QRRoomServiceView() {
     } catch (err) {
       console.error('[Order Error]', err)
     }
-  }, [run, roomNumber, cart, notes, qrToken, guestCtx.guestId, guestCtx.sessionId])
+  }, [run, roomNumber, cart, notes, qrToken, guestId, sessionId])
 
   function resetForm() {
     reset()
@@ -276,8 +278,8 @@ export function QRRoomServiceView() {
 
       // Persist active order and auth context for browser-refresh survival.
       const authCtx: AuthContext = {
-        guestId: respData && typeof respData.guestId === 'string' ? respData.guestId : guestCtx.guestId,
-        sessionId: respData && typeof respData.sessionId === 'string' ? respData.sessionId : guestCtx.sessionId,
+        guestId: respData && typeof respData.guestId === 'string' ? respData.guestId : guestId,
+        sessionId: respData && typeof respData.sessionId === 'string' ? respData.sessionId : sessionId,
         qrToken,
       }
       setAuth(authCtx)
@@ -307,8 +309,8 @@ export function QRRoomServiceView() {
       }
 
       const authCtx: AuthContext = {
-        guestId: respData && typeof respData.guestId === 'string' ? respData.guestId : guestCtx.guestId,
-        sessionId: respData && typeof respData.sessionId === 'string' ? respData.sessionId : guestCtx.sessionId,
+        guestId: respData && typeof respData.guestId === 'string' ? respData.guestId : guestId,
+        sessionId: respData && typeof respData.sessionId === 'string' ? respData.sessionId : sessionId,
         qrToken,
       }
       setAuth(authCtx)
