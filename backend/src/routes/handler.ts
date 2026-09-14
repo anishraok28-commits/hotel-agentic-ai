@@ -106,6 +106,7 @@ export async function handleConcierge(
   req: IncomingMessage,
   res: ServerResponse,
   transport: WebhookTransport,
+  env?: EnvConfig,
 ): Promise<void> {
   const payload = await readAndParse(req, res)
   if (payload === undefined) return
@@ -119,6 +120,94 @@ export async function handleConcierge(
       code: 'MISSING_FIELD',
     })
     return
+  }
+
+  // Session verification: QR token + active session required.
+  // When env is present (production), qrToken is mandatory and verified.
+  // Without env (unit tests), auth is skipped — verification is impossible
+  // without qrTokenSecret.
+  const p = payload as Record<string, unknown>
+  let guestId = p.guestId as string
+  let sessionId = p.sessionId as string
+  if (env) {
+    const qrToken = p.qrToken as string | undefined
+    if (typeof qrToken !== 'string' || qrToken.trim() === '') {
+      sendJson(res, 400, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'qrToken required',
+        code: 'MISSING_FIELD',
+      })
+      return
+    }
+    const tokenResult = verifyQrToken(qrToken, env.qrTokenSecret)
+    if (tokenResult === undefined || tokenResult.roomId !== (p.roomNumber as number)) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Invalid, expired, or tampered QR token',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+
+    // Room verification: reject deactivated rooms and reissued tokens.
+    const room = getRoomByNumber(tokenResult.roomId)
+    if (!room) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Room not found',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    if (!room.active) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Room is not active',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    if (room.qrToken !== qrToken) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'QR token does not match room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+
+    // Session verification: resolve the active session for this room.
+    let session = verifySession(tokenResult.roomId, guestId, sessionId)
+    if (!session) {
+      const existing = getSession(tokenResult.roomId)
+      if (existing) {
+        guestId = existing.guestId
+        sessionId = existing.sessionId
+        session = existing
+      } else {
+        guestId = crypto.randomUUID()
+        sessionId = crypto.randomUUID()
+        const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
+        session = checkIn(tokenResult.roomId, guestId, sessionId, ttlMs, qrToken)
+      }
+    }
+
+    // Ensure a stay record exists.
+    const activeStay = getActiveStay(tokenResult.roomId)
+    if (!activeStay) {
+      createStay({
+        stayId: crypto.randomUUID(),
+        roomNumber: tokenResult.roomId,
+        guestId,
+        sessionId,
+        qrToken,
+      })
+    }
   }
 
   try {
@@ -584,26 +673,35 @@ export async function handleOrderStatus(
     return
   }
 
-  // Room verification: reject deactivated rooms and reissued tokens.
-  const room = getRoomByNumber(tokenResult.roomId)
-  if (room && !room.active) {
-    sendJson(res, 403, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'Room is not active',
-      code: 'AUTH_REQUIRED',
-    })
-    return
-  }
-  if (room && room.qrToken !== qrToken) {
-    sendJson(res, 403, {
-      status: 'error',
-      requestId: 'local-validation',
-      message: 'QR token does not match room',
-      code: 'AUTH_REQUIRED',
-    })
-    return
-  }
+    // Room verification: reject deactivated rooms and reissued tokens.
+    const room = getRoomByNumber(tokenResult.roomId)
+    if (!room) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Room not found',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    if (!room.active) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'Room is not active',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
+    if (room.qrToken !== qrToken) {
+      sendJson(res, 403, {
+        status: 'error',
+        requestId: 'local-validation',
+        message: 'QR token does not match room',
+        code: 'AUTH_REQUIRED',
+      })
+      return
+    }
 
   let guestId = p.guestId as string
   let sessionId = p.sessionId as string

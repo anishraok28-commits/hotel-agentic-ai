@@ -193,4 +193,10 @@ function migrateSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log (user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entity_id);
   `)
+
+  // Add index on orders.status for dashboard and list-orders queries
+  database.exec("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status)")
+
+  // Add index on sessions.expires_at for active-session count queries
+  database.exec("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at)")
 }

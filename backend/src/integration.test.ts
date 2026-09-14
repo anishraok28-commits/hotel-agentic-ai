@@ -278,8 +278,17 @@ async function handleCheckIn(
   const sessionId = crypto.randomUUID()
 
   const ttlMs = e.sessionTtlHours * 60 * 60 * 1000
+  const existingRoom = getRoomByNumber(roomId)
+  let qrToken: string
+
+  if (existingRoom) {
+    qrToken = existingRoom.qrToken
+  } else {
+    qrToken = generateQrToken(roomId, e.qrTokenSecret)
+    createRoom(roomId, qrToken)
+  }
+
   checkIn(roomId, guestId, sessionId, ttlMs)
-  const qrToken = generateQrToken(roomId, e.qrTokenSecret)
   sendJson(res, 200, { status: 'ok', requestId: crypto.randomUUID(), message: 'Guest checked in', data: { roomId, guestId, sessionId, qrToken } })
 }
 

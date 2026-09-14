@@ -174,7 +174,7 @@ function route(
 
   if (method === 'POST' && url === '/api/concierge') {
     if (authorizeGuest(req, res, limiter)) {
-      void handleConcierge(req, res, transport)
+      void handleConcierge(req, res, transport, env)
     }
     return
   }
@@ -335,6 +335,14 @@ function route(
     return
   }
 
+  // Database backup: OWNER only (security-sensitive)
+  if (method === 'GET' && url === '/api/admin/backup') {
+    if (!limiter.consume(clientKey(req))) { handleRateLimited(res); return }
+    const user = requireAuth(req, res, env, OWNER_ONLY)
+    if (user) handleBackup(res)
+    return
+  }
+
   // Feedback: any authenticated staff
   if (method === 'POST' && url === '/api/admin/feedback') {
     if (!limiter.consume(clientKey(req))) { handleRateLimited(res); return }
@@ -455,7 +463,16 @@ async function handleCheckIn(
 
   const ttlMs = env.sessionTtlHours * 60 * 60 * 1000
   const room = getRoomByNumber(roomId)
-  const qrToken = room?.qrToken ?? generateQrToken(roomId, env.qrTokenSecret)
+  if (!room) {
+    sendJson(res, 400, {
+      status: 'error',
+      requestId: 'local-validation',
+      message: `Room ${roomId} not found`,
+      code: 'NOT_FOUND',
+    })
+    return
+  }
+  const qrToken = room.qrToken
   checkIn(roomId, guestId, sessionId, ttlMs, qrToken)
 
   sendJson(res, 200, {
@@ -801,6 +818,46 @@ function handleCheckout(req: IncomingMessage, res: ServerResponse, _env: EnvConf
       message: 'Internal error during checkout',
       code: 'INTERNAL_ERROR',
     })
+  })
+}
+
+function handleBackup(res: ServerResponse): void {
+  const db = getDatabase()
+
+  const safeStaffUsers = db.prepare(
+    'SELECT id, name, identifier, role, active, created_at, updated_at FROM staff_users',
+  ).all()
+
+  const tableQueries: ReadonlyArray<readonly [string, string]> = [
+    ['sessions', 'SELECT * FROM sessions'],
+    ['stays', 'SELECT * FROM stays'],
+    ['orders', 'SELECT * FROM orders'],
+    ['idempotency', 'SELECT * FROM idempotency'],
+    ['rooms', 'SELECT * FROM rooms'],
+    ['feedback', 'SELECT * FROM feedback'],
+    ['audit_log', 'SELECT * FROM audit_log'],
+  ]
+
+  const backup: Record<string, unknown[]> = {}
+  backup['staff_users'] = safeStaffUsers as unknown[]
+
+  for (const [table, query] of tableQueries) {
+    try {
+      backup[table] = db.prepare(query).all() as unknown[]
+    } catch {
+      backup[table] = []
+    }
+  }
+
+  sendJson(res, 200, {
+    status: 'ok',
+    requestId: crypto.randomUUID(),
+    message: 'Database backup exported',
+    data: {
+      exportedAt: new Date().toISOString(),
+      tables: ['sessions', 'stays', 'orders', 'idempotency', 'rooms', 'feedback', 'staff_users', 'audit_log'],
+      backup,
+    },
   })
 }
 
