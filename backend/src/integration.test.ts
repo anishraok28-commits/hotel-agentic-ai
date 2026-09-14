@@ -58,6 +58,10 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse, env: EnvConfig
 }
 
 function clientKey(req: IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim()
+  }
   return req.socket.remoteAddress ?? 'unknown'
 }
 
@@ -780,6 +784,51 @@ describe('Rate limiting', () => {
     expect(JSON.parse(r3.body).code).toBe('RATE_LIMITED')
 
     await new Promise<void>((resolve) => testServer.close(() => resolve()))
+  })
+})
+
+describe('clientKey X-Forwarded-For extraction', () => {
+  function makeReq(headers: Record<string, string | undefined>, remoteAddr = '127.0.0.1'): IncomingMessage {
+    return {
+      headers,
+      socket: { remoteAddress: remoteAddr },
+    } as unknown as IncomingMessage
+  }
+
+  it('uses first X-Forwarded-For value when present', () => {
+    const req = makeReq({ 'x-forwarded-for': '203.0.113.50, 70.41.3.18' })
+    expect(clientKey(req)).toBe('203.0.113.50')
+  })
+
+  it('falls back to remoteAddress when no X-Forwarded-For', () => {
+    const req = makeReq({}, '192.168.1.100')
+    expect(clientKey(req)).toBe('192.168.1.100')
+  })
+
+  it('falls back to remoteAddress when X-Forwarded-For is empty string', () => {
+    const req = makeReq({ 'x-forwarded-for': '' }, '10.0.0.1')
+    expect(clientKey(req)).toBe('10.0.0.1')
+  })
+
+  it('falls back to remoteAddress when X-Forwarded-For is undefined', () => {
+    const req = makeReq({ 'x-forwarded-for': undefined }, '172.16.0.1')
+    expect(clientKey(req)).toBe('172.16.0.1')
+  })
+
+  it('trims whitespace around the first forwarded IP', () => {
+    const req = makeReq({ 'x-forwarded-for': '  203.0.113.50 , 70.41.3.18' })
+    expect(clientKey(req)).toBe('203.0.113.50')
+  })
+
+  it('different forwarded IPs produce different limiter buckets', () => {
+    const limiter = createRateLimiter(60, 1)
+
+    const reqA = makeReq({ 'x-forwarded-for': '203.0.113.50' })
+    const reqB = makeReq({ 'x-forwarded-for': '198.51.100.77' })
+
+    expect(limiter.consume(clientKey(reqA))).toBe(true)
+    expect(limiter.consume(clientKey(reqA))).toBe(false)
+    expect(limiter.consume(clientKey(reqB))).toBe(true)
   })
 })
 

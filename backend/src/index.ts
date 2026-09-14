@@ -78,6 +78,10 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse, env: EnvConfig
 }
 
 function clientKey(req: IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim()
+  }
   return req.socket.remoteAddress ?? 'unknown'
 }
 
