@@ -194,8 +194,12 @@ export function validateLateCheckoutPayload(payload: unknown): ValidationResult 
   const p = payload as Record<string, unknown>
   const errors: ValidationError[] = []
 
-  isValidIdentifier(p.guestId, 'guestId', errors)
-  isValidIdentifier(p.sessionId, 'sessionId', errors)
+  if (typeof p.guestId === 'string' && p.guestId !== '') {
+    isValidIdentifier(p.guestId, 'guestId', errors)
+  }
+  if (typeof p.sessionId === 'string' && p.sessionId !== '') {
+    isValidIdentifier(p.sessionId, 'sessionId', errors)
+  }
   if (
     typeof p.roomNumber !== 'number' ||
     !Number.isInteger(p.roomNumber) ||
