@@ -151,6 +151,26 @@ describe('AIConciergeView', () => {
     })
   })
 
+  it('includes qrToken from GuestContext in the submitted payload', async () => {
+    const user = userEvent.setup()
+    renderView({
+      guestId: 'test-guest',
+      sessionId: 'test-session',
+      roomNumber: 214,
+      qrToken: 'verified-qr-token-abc',
+    })
+
+    await user.type(screen.getByRole('textbox', { name: /Your request/ }), 'Book a spa session')
+    await user.type(screen.getByRole('spinbutton', { name: /Room number/ }), '214')
+
+    await user.click(screen.getByRole('button', { name: /Send to concierge/ }))
+
+    await screen.findByRole('heading', { name: 'Request received' })
+
+    const [, payload] = mocks.submit.mock.calls[0] as [string, Record<string, unknown>]
+    expect(payload).toHaveProperty('qrToken', 'verified-qr-token-abc')
+  })
+
   it('resets to the form when starting another request', async () => {
     const user = userEvent.setup()
     renderView({ guestId: 'g-1', sessionId: 's-1' })

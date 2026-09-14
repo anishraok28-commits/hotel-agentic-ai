@@ -62,6 +62,7 @@ describe('useModeSubmit — payload passthrough', () => {
       sessionId: 'server-generated-session',
       roomNumber: 101,
       request: 'Test request',
+      qrToken: 'test-qr-token',
       mode: 'AI_CONCIERGE' as const,
     }
 
@@ -123,6 +124,7 @@ describe('useModeSubmit — payload passthrough', () => {
       sessionId: 's1',
       roomNumber: 1,
       request: 'test',
+      qrToken: 'test-qr-token',
       mode: 'AI_CONCIERGE' as const,
     }
 

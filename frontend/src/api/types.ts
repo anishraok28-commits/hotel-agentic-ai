@@ -41,6 +41,7 @@ export interface ConciergeRequest {
   sessionId: string
   roomNumber: number
   request: string
+  qrToken: string
   mode: 'AI_CONCIERGE'
 }
 

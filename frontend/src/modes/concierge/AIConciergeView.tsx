@@ -82,6 +82,7 @@ export function AIConciergeView() {
       sessionId,
       roomNumber: Number(roomNumber),
       request: request.trim(),
+      qrToken: guestCtx.qrToken,
       mode: 'AI_CONCIERGE',
     }
     void run(payload)

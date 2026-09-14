@@ -66,9 +66,17 @@ export function RootLanding() {
       return
     }
 
-    // Check for existing valid context
+    // Check for existing valid context.
+    // Require guestId and sessionId to be non-empty so that a partial
+    // context (token saved before initGuestSession ran) does not skip
+    // server-side initialization.
     const existing = loadGuestContext()
-    if (existing && existing.qrToken === qrToken) {
+    const hasValidExisting =
+      existing &&
+      existing.qrToken === qrToken &&
+      typeof existing.guestId === 'string' && existing.guestId !== '' &&
+      typeof existing.sessionId === 'string' && existing.sessionId !== ''
+    if (hasValidExisting) {
       const hasActiveOrder = !!sessionStorage.getItem('qr-room-service-active-order')
       navigate(hasActiveOrder ? '/room-service' : '/', { replace: true })
       return

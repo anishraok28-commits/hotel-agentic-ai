@@ -159,6 +159,45 @@ describe('RootLanding redirect', () => {
     await waitFor(() => {
       expect(screen.getByTestId('room-service')).toBeInTheDocument()
     })
+
+    expect(mocks.initGuestSession).not.toHaveBeenCalled()
+  })
+
+  it('calls initGuestSession when stored context has qrToken but empty guestId/sessionId', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: null,
+      guestId: '',
+      sessionId: '',
+      qrToken: 'qr-token-101',
+    }))
+
+    mocks.initGuestSession.mockResolvedValueOnce({
+      status: 'ok',
+      data: { roomId: 101, guestId: 'new-guest', sessionId: 'new-session' },
+    })
+
+    render(<AppRoot initialEntries={['/?token=qr-token-101']} />)
+
+    await waitFor(() => {
+      expect(mocks.initGuestSession).toHaveBeenCalledWith('qr-token-101')
+    })
+  })
+
+  it('reuses existing session without calling initGuestSession when guestId and sessionId are present', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-abc',
+      sessionId: 'session-xyz',
+      qrToken: 'qr-token-101',
+    }))
+
+    render(<AppRoot initialEntries={['/?token=qr-token-101']} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Room 101')).toBeInTheDocument()
+    })
+
+    expect(mocks.initGuestSession).not.toHaveBeenCalled()
   })
 
   it('navigates to / when existing context + no active order', async () => {
