@@ -132,7 +132,7 @@ export async function initGuestSession(
     return {
       status: 'error',
       requestId: 'local-network',
-      message: 'Failed to reach the backend service',
+      message: 'Unable to connect to the server. Please check your connection and try again.',
       code: 'AUTOMATION_FAILED',
     }
   }
@@ -451,7 +451,7 @@ export async function checkOrderStatus(
     return {
       status: 'error',
       requestId: 'local-network',
-      message: 'Failed to reach the backend service',
+      message: 'Unable to connect to the server. Please check your connection and try again.',
       code: 'AUTOMATION_FAILED',
     }
   }
@@ -584,7 +584,7 @@ export async function submit(
     return {
       status: 'error',
       requestId: 'local-network',
-      message: 'Failed to reach the backend service',
+      message: 'Unable to connect to the server. Please check your connection and try again.',
       code: 'AUTOMATION_FAILED',
     }
   } finally {
@@ -768,7 +768,7 @@ export async function updateOrderStatus(
     return {
       status: 'error',
       requestId: 'local-network',
-      message: 'Failed to reach the backend service',
+      message: 'Unable to connect to the server. Please check your connection and try again.',
       code: 'AUTOMATION_FAILED',
     }
   }
@@ -854,7 +854,7 @@ export async function fetchCurrentStay(
     return {
       status: 'error',
       requestId: 'local-network',
-      message: 'Failed to reach the backend service',
+      message: 'Unable to connect to the server. Please check your connection and try again.',
       code: 'AUTOMATION_FAILED',
     }
   }

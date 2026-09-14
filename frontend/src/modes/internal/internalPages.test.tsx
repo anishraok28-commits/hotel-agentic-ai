@@ -40,11 +40,11 @@ describe('PrivacyPolicy', () => {
 })
 
 describe('TermsOfService', () => {
-  it('renders the heading and disclaimer', () => {
+  it('renders the heading and key content', () => {
     renderPage(TermsOfService)
     expect(screen.getByRole('heading', { name: 'Terms of Service' })).toBeInTheDocument()
-    expect(screen.getByText(/basic draft/)).toBeInTheDocument()
-    expect(screen.getByText(/not legal advice/)).toBeInTheDocument()
+    expect(screen.getByText(/Last updated: September 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/hotel front desk/)).toBeInTheDocument()
   })
 
   it('contains key terms sections', () => {

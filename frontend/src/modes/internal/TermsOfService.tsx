@@ -14,12 +14,6 @@ export function TermsOfService() {
         <div className="legal-content">
           <p className="muted">Last updated: September 2026</p>
 
-          <p>
-            <strong>Note:</strong> This is a basic draft Terms of Service for the pilot
-            phase. It is not legal advice and has not been reviewed by a lawyer. Final
-            terms should be reviewed by legal counsel before production use.
-          </p>
-
           <h3>1. Acceptance of terms</h3>
           <p>
             By accessing or using the Hotel Agentic AI platform (the &quot;Service&quot;)
@@ -71,7 +65,7 @@ export function TermsOfService() {
           <h3>8. Governing law</h3>
           <p>
             These terms are governed by the laws of the jurisdiction in which the
-            hotel operates. [To confirm with lawyer]
+            hotel operates.
           </p>
 
           <h3>9. Contact</h3>

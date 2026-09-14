@@ -214,7 +214,7 @@ describe('network and timeout failures', () => {
       status: 'error',
       code: 'AUTOMATION_FAILED',
       requestId: 'local-network',
-      message: 'Failed to reach the backend service',
+      message: 'Unable to connect to the server. Please check your connection and try again.',
     })
   })
 

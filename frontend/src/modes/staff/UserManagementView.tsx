@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/icon/Icon'
 import { LoadingState } from '@/components/state/LoadingState'
 import { ErrorState } from '@/components/state/ErrorState'
+import { EmptyState } from '@/components/state/EmptyState'
 import { useAuth, type StaffRole } from '@/auth/AuthContext'
 import {
   listUsers,
@@ -430,7 +431,7 @@ export function UserManagementView() {
             </table>
           </div>
           {users.length === 0 && (
-            <ErrorState title="No users found" message="No staff accounts exist." />
+            <EmptyState title="No staff accounts" message="No staff accounts have been created yet." />
           )}
         </Card>
       </div>
