@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { useGuestContext, saveGuestContext, loadGuestContext } from '@/context/GuestContext'
+import { useGuestContext } from '@/context/GuestContext'
 import type { GuestContextValue } from '@/context/GuestContext'
 
 const mocks = vi.hoisted(() => ({
@@ -272,16 +272,6 @@ function UpdateSessionConsumer({ onReady }: { onReady: (ctx: GuestContextValue) 
       <span data-testid="sessionId">{ctx.sessionId}</span>
       <span data-testid="roomNumber">{String(ctx.roomNumber)}</span>
     </div>
-  )
-}
-
-function UpdateSessionRoot({ initialEntries }: { initialEntries?: string[] } = {}) {
-  return (
-    <MemoryRouter initialEntries={initialEntries ?? ['/']}>
-      <GuestContextProvider>
-        <UpdateSessionConsumer onReady={() => {}} />
-      </GuestContextProvider>
-    </MemoryRouter>
   )
 }
 
