@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it, expect, vi } from 'vitest'
 import { handleConcierge, handleRoomService, handleLateCheckout } from './handler.js'
 import type { WebhookTransport, WebhookPayload } from '../webhook/transport.js'
+import type { IdempotencyStore } from '../middleware/idempotency.js'
 
 interface CapturedResponse {
   status: number
@@ -253,6 +254,124 @@ describe('handleRoomService', () => {
     expect(transport.send).not.toHaveBeenCalled()
     expect(captured.status).toBe(400)
   })
+
+  it('returns 202 with order data when Make.com succeeds', async () => {
+    const transport = transportReturning({
+      status: 'accepted',
+      requestId: 'make-req-rs-ok',
+      message: 'Accepted',
+      data: { workflow: 'ROOM_SERVICE', status: 'accepted' },
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(makeRequest(validRoomServicePayload), res, transport)
+
+    expect(captured.status).toBe(202)
+    const body = JSON.parse(captured.body)
+    expect(body.status).toBe('accepted')
+    expect(body.data).toBeDefined()
+    expect(body.data.orderId).toBeDefined()
+    expect(body.data.status).toBe('NEW')
+    expect(body.data.roomNumber).toBe(214)
+    expect(body.data.items).toEqual([
+      { itemId: 'menu.001', name: 'Club Sandwich', quantity: 2, unitPrice: 1200 },
+    ])
+    expect(body.data.total).toBe(2400)
+    expect(body.data.automationFailed).toBeUndefined()
+  })
+
+  it('returns 202 with automationFailed when Make.com fails', async () => {
+    const transport = transportReturning({
+      status: 'error',
+      requestId: 'make-req-rs-err',
+      message: 'Make.com webhook timed out',
+      code: 'AUTOMATION_FAILED',
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(makeRequest(validRoomServicePayload), res, transport)
+
+    expect(transport.send).toHaveBeenCalledWith('ROOM_SERVICE', expect.objectContaining({ mode: 'QR_ROOM_SERVICE' }))
+    expect(captured.status).toBe(202)
+    const body = JSON.parse(captured.body)
+    expect(body).toMatchObject({
+      status: 'accepted',
+      data: expect.objectContaining({
+        orderId: expect.any(String),
+        status: 'NEW',
+        roomNumber: 214,
+        automationFailed: true,
+      }),
+    })
+  })
+
+  it('returns 202 with automationFailed when transport throws', async () => {
+    const transport: WebhookTransport = {
+      send: vi.fn().mockRejectedValue(new Error('boom')),
+    }
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(makeRequest(validRoomServicePayload), res, transport)
+
+    expect(captured.status).toBe(202)
+    const body = JSON.parse(captured.body)
+    expect(body).toMatchObject({
+      status: 'accepted',
+      data: expect.objectContaining({
+        orderId: expect.any(String),
+        status: 'NEW',
+        roomNumber: 214,
+        automationFailed: true,
+      }),
+    })
+  })
+
+  it('includes full order data with automationFailed when Make.com fails', async () => {
+    const transport = transportReturning({
+      status: 'error',
+      requestId: 'make-req-rs-err-2',
+      message: 'Make.com webhook failed',
+      code: 'AUTOMATION_FAILED',
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(makeRequest(validRoomServicePayload), res, transport)
+
+    expect(captured.status).toBe(202)
+    const body = JSON.parse(captured.body)
+    expect(body.status).toBe('accepted')
+    expect(body.data).toBeDefined()
+    expect(body.data.orderId).toBeDefined()
+    expect(body.data.status).toBe('NEW')
+    expect(body.data.roomNumber).toBe(214)
+    expect(body.data.items).toEqual([
+      { itemId: 'menu.001', name: 'Club Sandwich', quantity: 2, unitPrice: 1200 },
+    ])
+    expect(body.data.total).toBe(2400)
+    expect(body.data.automationFailed).toBe(true)
+  })
+
+  it('order is retrievable after Make.com failure', async () => {
+    const { getOrder } = await import('../order/store.js')
+    const transport = transportReturning({
+      status: 'error',
+      requestId: 'make-req-rs-persist',
+      message: 'Make.com webhook timed out',
+      code: 'AUTOMATION_FAILED',
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(makeRequest(validRoomServicePayload), res, transport)
+
+    expect(captured.status).toBe(202)
+    const body = JSON.parse(captured.body)
+    const orderId = body.data.orderId as string
+    const order = getOrder(orderId)
+    expect(order).toBeDefined()
+    expect(order?.status).toBe('NEW')
+    expect(order?.roomNumber).toBe(214)
+    expect(order?.total).toBe(2400)
+  })
 })
 
 describe('handleLateCheckout', () => {
@@ -385,5 +504,109 @@ describe('handleLateCheckout', () => {
       status: 'error',
       code: 'AUTOMATION_FAILED',
     })
+  })
+})
+
+describe('handleRoomService idempotency', () => {
+  function createMockIdempotencyStore(): IdempotencyStore & {
+    entries: Map<string, { responseStatus: number; responseBody: unknown }>
+  } {
+    const entries = new Map<string, { responseStatus: number; responseBody: unknown }>()
+    return {
+      entries,
+      get(key: string) {
+        const entry = entries.get(key)
+        return entry
+          ? { responseStatus: entry.responseStatus, responseBody: entry.responseBody, createdAt: Date.now() }
+          : undefined
+      },
+      set(key: string, status: number, body: unknown) {
+        entries.set(key, { responseStatus: status, responseBody: body })
+      },
+    }
+  }
+
+  const validRoomServicePayload = {
+    guestId: 'guest-123',
+    sessionId: 'session-456',
+    roomNumber: 214,
+    items: [
+      { itemId: 'menu.001', name: 'Club Sandwich', quantity: 2, unitPrice: 1200 },
+    ],
+    notes: 'No onions',
+    mode: 'QR_ROOM_SERVICE',
+  }
+
+  it('returns cached response on duplicate idempotency key', async () => {
+    const store = createMockIdempotencyStore()
+    const cachedResponse = {
+      status: 'accepted',
+      requestId: 'cached-rs-1',
+      message: 'Cached room service',
+      data: { orderId: 'cached-order-1', status: 'NEW' },
+    }
+    store.set('idem-rs-1', 202, cachedResponse)
+
+    const transport = transportReturning({ status: 'accepted', requestId: 'new', message: 'ok', data: {} })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(
+      makeRequest(validRoomServicePayload, { 'x-idempotency-key': 'idem-rs-1' }),
+      res,
+      transport,
+      undefined,
+      store,
+    )
+
+    expect(transport.send).not.toHaveBeenCalled()
+    expect(captured.status).toBe(202)
+    expect(JSON.parse(captured.body)).toMatchObject({ requestId: 'cached-rs-1' })
+  })
+
+  it('processes request and stores response on first call', async () => {
+    const store = createMockIdempotencyStore()
+    const transport = transportReturning({
+      status: 'accepted',
+      requestId: 'make-rs-1',
+      message: 'Accepted',
+      data: { workflow: 'ROOM_SERVICE' },
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(
+      makeRequest(validRoomServicePayload, { 'x-idempotency-key': 'idem-rs-new' }),
+      res,
+      transport,
+      undefined,
+      store,
+    )
+
+    expect(transport.send).toHaveBeenCalledOnce()
+    expect(captured.status).toBe(202)
+    expect(store.entries.has('idem-rs-new')).toBe(true)
+  })
+
+  it('caches automation failure for replay prevention', async () => {
+    const store = createMockIdempotencyStore()
+    const transport = transportReturning({
+      status: 'error',
+      requestId: 'make-rs-err',
+      message: 'Make.com webhook timed out',
+      code: 'AUTOMATION_FAILED',
+    })
+    const { res, captured } = makeResponse()
+
+    await handleRoomService(
+      makeRequest(validRoomServicePayload, { 'x-idempotency-key': 'idem-rs-fail' }),
+      res,
+      transport,
+      undefined,
+      store,
+    )
+
+    expect(captured.status).toBe(202)
+    expect(store.entries.has('idem-rs-fail')).toBe(true)
+    const cached = store.entries.get('idem-rs-fail')
+    expect(cached?.responseStatus).toBe(202)
   })
 })

@@ -390,61 +390,63 @@ export async function handleRoomService(
   try {
     const webhookPayload = sanitizedPayload as unknown as WebhookPayload
     const response = await transport.send('ROOM_SERVICE', webhookPayload)
-    const statusCode = response.status === 'error' ? 502 : 202
+    const automationFailed = response.status === 'error'
 
-    const clientResponse = response.status === 'error'
+    if (automationFailed) {
+      console.error('[Room Service] Automation layer rejected the order:', response.message)
+    }
+
+    // The order was persisted to SQLite before this point.
+    // Always return 202 — the order is confirmed regardless of automation outcome.
+    const orderData = {
+      orderId: order.orderId,
+      status: order.status,
+      roomNumber: order.roomNumber,
+      items: sanitizedItems,
+      total,
+      createdAt: new Date(order.createdAt).toISOString(),
+      guestId,
+      sessionId,
+    }
+
+    const clientResponse = automationFailed
       ? {
-          ...response,
-          data: {
-            ...response.data,
-            orderId: order.orderId,
-            status: order.status,
-            roomNumber: order.roomNumber,
-            items: sanitizedItems,
-            total,
-            createdAt: new Date(order.createdAt).toISOString(),
-            guestId,
-            sessionId,
-          },
+          status: 'accepted' as const,
+          requestId: order.requestId,
+          message: 'Order placed successfully.',
+          data: { ...orderData, automationFailed: true as const },
         }
       : {
           ...response,
-          data: {
-            ...response.data,
-            orderId: order.orderId,
-            status: order.status,
-            roomNumber: order.roomNumber,
-            items: sanitizedItems,
-            total,
-            createdAt: new Date(order.createdAt).toISOString(),
-            guestId,
-            sessionId,
-          },
+          data: { ...response.data, ...orderData },
         }
 
     // Store response for idempotency replay
     if (idempotencyKey && idempotencyStore) {
-      idempotencyStore.set(idempotencyKey, statusCode, clientResponse)
+      idempotencyStore.set(idempotencyKey, 202, clientResponse)
     }
 
-    // Audit: room service order created
-    if (response.status !== 'error') {
-      recordAuditEvent({
-        action: 'ORDER_CREATED',
-        entityType: 'order',
-        entityId: order.orderId,
-        details: JSON.stringify({ roomNumber: order.roomNumber, total, itemCount: sanitizedItems.length }),
-      })
-    }
+    // Audit: order was persisted — always record
+    recordAuditEvent({
+      action: 'ORDER_CREATED',
+      entityType: 'order',
+      entityId: order.orderId,
+      details: JSON.stringify({
+        roomNumber: order.roomNumber,
+        total,
+        itemCount: sanitizedItems.length,
+        ...(automationFailed ? { automationFailed: true } : {}),
+      }),
+    })
 
-    sendJson(res, statusCode, clientResponse)
+    sendJson(res, 202, clientResponse)
   } catch (err) {
     console.error('[Room Service Webhook Error]:', err)
+    // The order was already persisted — return 202 with automation failure signal.
     const errorResponse = {
-      status: 'error' as const,
-      requestId: crypto.randomUUID(),
-      message: 'Failed to forward request to automation layer',
-      code: 'AUTOMATION_FAILED' as const,
+      status: 'accepted' as const,
+      requestId: order.requestId,
+      message: 'Order placed successfully.',
       data: {
         orderId: order.orderId,
         status: order.status,
@@ -454,12 +456,20 @@ export async function handleRoomService(
         createdAt: new Date(order.createdAt).toISOString(),
         guestId,
         sessionId,
+        automationFailed: true as const,
       },
     }
     if (idempotencyKey && idempotencyStore) {
-      idempotencyStore.set(idempotencyKey, 502, errorResponse)
+      idempotencyStore.set(idempotencyKey, 202, errorResponse)
     }
-    sendJson(res, 502, errorResponse)
+    // Audit: order was persisted — record with automation failure
+    recordAuditEvent({
+      action: 'ORDER_CREATED',
+      entityType: 'order',
+      entityId: order.orderId,
+      details: JSON.stringify({ roomNumber: order.roomNumber, total, itemCount: sanitizedItems.length, automationFailed: true }),
+    })
+    sendJson(res, 202, errorResponse)
   }
 }
 
