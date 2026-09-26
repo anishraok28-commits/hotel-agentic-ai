@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { useGuestContext } from '@/context/GuestContext'
+import { useGuestContext, saveGuestContext, loadGuestContext } from '@/context/GuestContext'
+import type { GuestContextValue } from '@/context/GuestContext'
 
 const mocks = vi.hoisted(() => ({
   initGuestSession: vi.fn(),
@@ -254,5 +255,402 @@ describe('RootLanding redirect', () => {
     const stored = JSON.parse(sessionStorage.getItem('qr-room-service-active-order')!)
     expect(stored.orderId).toBe('order-456')
     expect(stored.status).toBe('PREPARING')
+  })
+})
+
+// =============================================================================
+// Bug #1 Regression Tests — roomNumber preservation in updateSession
+// =============================================================================
+
+function UpdateSessionConsumer({ onReady }: { onReady: (ctx: GuestContextValue) => void }) {
+  const ctx = useGuestContext()
+  onReady(ctx)
+  return (
+    <div>
+      <span data-testid="qrToken">{ctx.qrToken}</span>
+      <span data-testid="guestId">{ctx.guestId}</span>
+      <span data-testid="sessionId">{ctx.sessionId}</span>
+      <span data-testid="roomNumber">{String(ctx.roomNumber)}</span>
+    </div>
+  )
+}
+
+function UpdateSessionRoot({ initialEntries }: { initialEntries?: string[] } = {}) {
+  return (
+    <MemoryRouter initialEntries={initialEntries ?? ['/']}>
+      <GuestContextProvider>
+        <UpdateSessionConsumer onReady={() => {}} />
+      </GuestContextProvider>
+    </MemoryRouter>
+  )
+}
+
+describe('Bug #1 — updateSession roomNumber preservation', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('updateSession preserves roomNumber when prev.roomNumber is already 101', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'old-guest',
+      sessionId: 'old-session',
+      qrToken: 'qr-token-101',
+    }))
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    // Wait for context to hydrate
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+      expect(capturedCtx!.roomNumber).toBe(101)
+    })
+
+    // Call updateSession with new credentials (simulates backend session recovery)
+    act(() => {
+      capturedCtx!.updateSession('new-guest', 'new-session')
+    })
+
+    // roomNumber must remain 101
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('101')
+    expect(screen.getByTestId('guestId')).toHaveTextContent('new-guest')
+    expect(screen.getByTestId('sessionId')).toHaveTextContent('new-session')
+    expect(screen.getByTestId('qrToken')).toHaveTextContent('qr-token-101')
+
+    // Verify sessionStorage consistency
+    const json = JSON.parse(sessionStorage.getItem('hotel-guest-context')!)
+    expect(json.roomNumber).toBe(101)
+    expect(json.guestId).toBe('new-guest')
+    expect(json.sessionId).toBe('new-session')
+    expect(json.qrToken).toBe('qr-token-101')
+  })
+
+  it('updateSession recovers roomNumber from sessionStorage when prev.roomNumber is null', async () => {
+    // Simulate the mismatch: JSON blob has roomNumber null, but individual key has "101"
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: null,
+      guestId: 'old-guest',
+      sessionId: 'old-session',
+      qrToken: 'qr-token-101',
+    }))
+    sessionStorage.setItem('roomNumber', '101')
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+    })
+
+    // Call updateSession — roomNumber should be recovered from sessionStorage
+    act(() => {
+      capturedCtx!.updateSession('new-guest', 'new-session')
+    })
+
+    // roomNumber should be 101 (recovered from individual sessionStorage key)
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('101')
+
+    // Verify JSON blob is now consistent
+    const json = JSON.parse(sessionStorage.getItem('hotel-guest-context')!)
+    expect(json.roomNumber).toBe(101)
+  })
+
+  it('updateSession preserves qrToken', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 201,
+      guestId: 'guest-201',
+      sessionId: 'session-201',
+      qrToken: 'unique-qr-token',
+    }))
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+    })
+
+    act(() => {
+      capturedCtx!.updateSession('new-guest', 'new-session')
+    })
+
+    expect(screen.getByTestId('qrToken')).toHaveTextContent('unique-qr-token')
+  })
+
+  it('updateSession preserves guestId', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 201,
+      guestId: 'original-guest',
+      sessionId: 'original-session',
+      qrToken: 'qr-201',
+    }))
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+    })
+
+    act(() => {
+      capturedCtx!.updateSession('recovered-guest', 'recovered-session')
+    })
+
+    expect(screen.getByTestId('guestId')).toHaveTextContent('recovered-guest')
+    expect(screen.getByTestId('sessionId')).toHaveTextContent('recovered-session')
+  })
+
+  it('updateSession preserves sessionId', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 201,
+      guestId: 'guest-201',
+      sessionId: 'session-original',
+      qrToken: 'qr-201',
+    }))
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+    })
+
+    act(() => {
+      capturedCtx!.updateSession('guest-201', 'session-recovered')
+    })
+
+    expect(screen.getByTestId('sessionId')).toHaveTextContent('session-recovered')
+  })
+
+  it('saveGuestContext produces roomNumber=101 in JSON after updateSession', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-101',
+      sessionId: 'session-101',
+      qrToken: 'qr-101',
+    }))
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+    })
+
+    act(() => {
+      capturedCtx!.updateSession('new-guest', 'new-session')
+    })
+
+    const json = JSON.parse(sessionStorage.getItem('hotel-guest-context')!)
+    expect(json.roomNumber).toBe(101)
+  })
+
+  it('JSON context and individual sessionStorage.roomNumber remain consistent after recovery', async () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-101',
+      sessionId: 'session-101',
+      qrToken: 'qr-101',
+    }))
+    sessionStorage.setItem('roomNumber', '101')
+
+    let capturedCtx: GuestContextValue | null = null
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={(ctx) => { capturedCtx = ctx }} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(capturedCtx).not.toBeNull()
+    })
+
+    act(() => {
+      capturedCtx!.updateSession('new-guest', 'new-session')
+    })
+
+    const json = JSON.parse(sessionStorage.getItem('hotel-guest-context')!)
+    expect(json.roomNumber).toBe(101)
+    expect(sessionStorage.getItem('roomNumber')).toBe('101')
+  })
+
+  it('render sync detects roomNumber mismatch between stored and context', () => {
+    // Set up a mismatch: stored has roomNumber 200, context has roomNumber 100
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 200,
+      guestId: 'guest-200',
+      sessionId: 'session-200',
+      qrToken: 'qr-200',
+    }))
+
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={() => {}} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    // The render sync should detect roomNumber 200 from stored and display it
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('200')
+  })
+
+  it('render sync picks up roomNumber change from sessionStorage on re-render', () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 100,
+      guestId: 'guest-100',
+      sessionId: 'session-100',
+      qrToken: 'qr-100',
+    }))
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={() => {}} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('100')
+
+    // Simulate updateSession writing roomNumber null (the old bug scenario)
+    // Then render-time sync should correct it
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 300,
+      guestId: 'guest-300',
+      sessionId: 'session-300',
+      qrToken: 'qr-300',
+    }))
+
+    act(() => {
+      rerender(
+        <MemoryRouter>
+          <GuestContextProvider>
+            <UpdateSessionConsumer onReady={() => {}} />
+          </GuestContextProvider>
+        </MemoryRouter>,
+      )
+    })
+
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('300')
+  })
+
+  it('page refresh restores roomNumber from sessionStorage', () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-101',
+      sessionId: 'session-101',
+      qrToken: 'qr-101',
+    }))
+    sessionStorage.setItem('qrToken', 'qr-101')
+    sessionStorage.setItem('guestId', 'guest-101')
+    sessionStorage.setItem('sessionId', 'session-101')
+    sessionStorage.setItem('roomNumber', '101')
+
+    // Simulate page refresh by mounting a fresh provider
+    render(
+      <MemoryRouter>
+        <GuestContextProvider>
+          <UpdateSessionConsumer onReady={() => {}} />
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('101')
+    expect(screen.getByTestId('guestId')).toHaveTextContent('guest-101')
+    expect(screen.getByTestId('sessionId')).toHaveTextContent('session-101')
+    expect(screen.getByTestId('qrToken')).toHaveTextContent('qr-101')
+  })
+
+  it('navigation between modes does not lose roomNumber', () => {
+    sessionStorage.setItem('hotel-guest-context', JSON.stringify({
+      roomNumber: 101,
+      guestId: 'guest-101',
+      sessionId: 'session-101',
+      qrToken: 'qr-101',
+    }))
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/concierge']}>
+        <GuestContextProvider>
+          <Routes>
+            <Route path="/concierge" element={<UpdateSessionConsumer onReady={() => {}} />} />
+            <Route path="/late-checkout" element={<UpdateSessionConsumer onReady={() => {}} />} />
+            <Route path="/room-service" element={<UpdateSessionConsumer onReady={() => {}} />} />
+          </Routes>
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('101')
+
+    // Navigate to late-checkout
+    rerender(
+      <MemoryRouter initialEntries={['/late-checkout']}>
+        <GuestContextProvider>
+          <Routes>
+            <Route path="/concierge" element={<UpdateSessionConsumer onReady={() => {}} />} />
+            <Route path="/late-checkout" element={<UpdateSessionConsumer onReady={() => {}} />} />
+            <Route path="/room-service" element={<UpdateSessionConsumer onReady={() => {}} />} />
+          </Routes>
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('101')
+
+    // Navigate to room-service
+    rerender(
+      <MemoryRouter initialEntries={['/room-service']}>
+        <GuestContextProvider>
+          <Routes>
+            <Route path="/concierge" element={<UpdateSessionConsumer onReady={() => {}} />} />
+            <Route path="/late-checkout" element={<UpdateSessionConsumer onReady={() => {}} />} />
+            <Route path="/room-service" element={<UpdateSessionConsumer onReady={() => {}} />} />
+          </Routes>
+        </GuestContextProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('roomNumber')).toHaveTextContent('101')
   })
 })
