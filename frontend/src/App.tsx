@@ -154,7 +154,8 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
     stored &&
     (stored.qrToken !== context.qrToken ||
       stored.guestId !== context.guestId ||
-      stored.sessionId !== context.sessionId)
+      stored.sessionId !== context.sessionId ||
+      stored.roomNumber !== context.roomNumber)
   ) {
     setContext((prev) => ({
       ...prev,
@@ -205,7 +206,10 @@ export function GuestContextProvider({ children }: { children: React.ReactNode }
       // committed), fall back to the value RootLanding already persisted in
       // sessionStorage so we don't overwrite it with an empty string.
       const qrToken = prev.qrToken || loadGuestContext()?.qrToken || ''
-      const next = { ...prev, guestId, sessionId, qrToken }
+      // Similarly preserve roomNumber: use ?? so a null prev.roomNumber
+      // falls back to the stored value rather than staying null.
+      const roomNumber = prev.roomNumber ?? loadGuestContext()?.roomNumber ?? null
+      const next = { ...prev, roomNumber, guestId, sessionId, qrToken }
       saveGuestContext(next)
       return next
     })
