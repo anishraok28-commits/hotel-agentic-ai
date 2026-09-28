@@ -11,9 +11,7 @@ import type {
 } from '@/api/types'
 import type { StaffRole } from '@/auth/AuthContext'
 import { appConfig, MOCK_API_ENABLED } from '@/config/appConfig'
-import { getAuthToken } from '@/auth/AuthContext'
-
-const FETCH_TIMEOUT_MS = 15_000
+import { authFetch } from '@/api/authFetch'
 
 interface ApiResponse<T> {
   status: 'ok' | 'error'
@@ -71,42 +69,31 @@ export async function listUsers(): Promise<{ users: StaffUserListItem[] } | { er
     return { users: mockUsers.filter((u) => u.active) }
   }
 
-  const token = getAuthToken()
-  if (!token) return { error: 'Not authenticated' }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+  let response: Response
   try {
-    const response = await fetch(`${appConfig.apiBaseUrl}/api/admin/users`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-    })
-
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      const body = await response.json() as ApiResponse<unknown>
-      return { error: body.message ?? `Failed to list users (HTTP ${response.status})` }
-    }
-
-    const body = await response.json() as ApiResponse<{ users: StaffUserListItem[] }>
-    if (body.status === 'ok' && body.data) {
-      return { users: body.data.users }
-    }
-
-    return { error: 'Invalid response format' }
+    response = await authFetch(`${appConfig.apiBaseUrl}/api/admin/users`, { method: 'GET' })
   } catch (err) {
-    clearTimeout(timer)
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { error: 'Request timed out' }
     }
     return { error: 'Network error' }
   }
+
+  if (response.status === 403) {
+    return { error: 'Access denied. You lack the required role.' }
+  }
+
+  if (!response.ok) {
+    const body = await response.json() as ApiResponse<unknown>
+    return { error: body.message ?? `Failed to list users (HTTP ${response.status})` }
+  }
+
+  const body = await response.json() as ApiResponse<{ users: StaffUserListItem[] }>
+  if (body.status === 'ok' && body.data) {
+    return { users: body.data.users }
+  }
+
+  return { error: 'Invalid response format' }
 }
 
 export async function createUser(
@@ -127,52 +114,43 @@ export async function createUser(
     return { user: newUser }
   }
 
-  const token = getAuthToken()
-  if (!token) return { error: 'Not authenticated' }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+  let response: Response
   try {
-    const response = await fetch(`${appConfig.apiBaseUrl}/api/admin/users`, {
+    response = await authFetch(`${appConfig.apiBaseUrl}/api/admin/users`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(data),
-      signal: controller.signal,
     })
-
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      const body = await response.json() as ApiResponse<unknown>
-      return { error: body.message ?? `Failed to create user (HTTP ${response.status})` }
-    }
-
-    const body = await response.json() as ApiResponse<{ id: string; name: string; identifier: string; role: StaffRole }>
-    if (body.status === 'ok' && body.data) {
-      const user: StaffUserListItem = {
-        id: body.data.id,
-        name: body.data.name,
-        identifier: body.data.identifier,
-        role: body.data.role,
-        active: true,
-        mustChangePassword: true,
-        createdAt: new Date().toISOString(),
-      }
-      return { user }
-    }
-
-    return { error: 'Invalid response format' }
   } catch (err) {
-    clearTimeout(timer)
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { error: 'Request timed out' }
     }
     return { error: 'Network error' }
   }
+
+  if (response.status === 403) {
+    return { error: 'Access denied. You lack the required role.' }
+  }
+
+  if (!response.ok) {
+    const body = await response.json() as ApiResponse<unknown>
+    return { error: body.message ?? `Failed to create user (HTTP ${response.status})` }
+  }
+
+  const body = await response.json() as ApiResponse<{ id: string; name: string; identifier: string; role: StaffRole }>
+  if (body.status === 'ok' && body.data) {
+    const user: StaffUserListItem = {
+      id: body.data.id,
+      name: body.data.name,
+      identifier: body.data.identifier,
+      role: body.data.role,
+      active: true,
+      mustChangePassword: true,
+      createdAt: new Date().toISOString(),
+    }
+    return { user }
+  }
+
+  return { error: 'Invalid response format' }
 }
 
 export async function updateUserRole(
@@ -187,38 +165,29 @@ export async function updateUserRole(
     return { success: true }
   }
 
-  const token = getAuthToken()
-  if (!token) return { error: 'Not authenticated' }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+  let response: Response
   try {
-    const response = await fetch(`${appConfig.apiBaseUrl}/api/admin/users/${userId}`, {
+    response = await authFetch(`${appConfig.apiBaseUrl}/api/admin/users/${userId}`, {
       method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(data),
-      signal: controller.signal,
     })
-
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      const body = await response.json() as ApiResponse<unknown>
-      return { error: body.message ?? `Failed to update user (HTTP ${response.status})` }
-    }
-
-    return { success: true }
   } catch (err) {
-    clearTimeout(timer)
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { error: 'Request timed out' }
     }
     return { error: 'Network error' }
   }
+
+  if (response.status === 403) {
+    return { error: 'Access denied. You lack the required role.' }
+  }
+
+  if (!response.ok) {
+    const body = await response.json() as ApiResponse<unknown>
+    return { error: body.message ?? `Failed to update user (HTTP ${response.status})` }
+  }
+
+  return { success: true }
 }
 
 export async function deactivateUser(
@@ -232,37 +201,28 @@ export async function deactivateUser(
     return { success: true }
   }
 
-  const token = getAuthToken()
-  if (!token) return { error: 'Not authenticated' }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+  let response: Response
   try {
-    const response = await fetch(`${appConfig.apiBaseUrl}/api/admin/users/${userId}/deactivate`, {
+    response = await authFetch(`${appConfig.apiBaseUrl}/api/admin/users/${userId}/deactivate`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
     })
-
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      const body = await response.json() as ApiResponse<unknown>
-      return { error: body.message ?? `Failed to deactivate user (HTTP ${response.status})` }
-    }
-
-    return { success: true }
   } catch (err) {
-    clearTimeout(timer)
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { error: 'Request timed out' }
     }
     return { error: 'Network error' }
   }
+
+  if (response.status === 403) {
+    return { error: 'Access denied. You lack the required role.' }
+  }
+
+  if (!response.ok) {
+    const body = await response.json() as ApiResponse<unknown>
+    return { error: body.message ?? `Failed to deactivate user (HTTP ${response.status})` }
+  }
+
+  return { success: true }
 }
 
 export async function resetUserPassword(
@@ -277,41 +237,32 @@ export async function resetUserPassword(
     return { newPassword }
   }
 
-  const token = getAuthToken()
-  if (!token) return { error: 'Not authenticated' }
-
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+  let response: Response
   try {
-    const response = await fetch(`${appConfig.apiBaseUrl}/api/admin/users/${userId}/reset-password`, {
+    response = await authFetch(`${appConfig.apiBaseUrl}/api/admin/users/${userId}/reset-password`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ newPassword }),
-      signal: controller.signal,
     })
-
-    clearTimeout(timer)
-
-    if (!response.ok) {
-      const body = await response.json() as ApiResponse<unknown>
-      return { error: body.message ?? `Failed to reset password (HTTP ${response.status})` }
-    }
-
-    const body = await response.json() as ApiResponse<{ newPassword: string }>
-    if (body.status === 'ok' && body.data) {
-      return { newPassword: body.data.newPassword }
-    }
-
-    return { newPassword }
   } catch (err) {
-    clearTimeout(timer)
     if (err instanceof DOMException && err.name === 'AbortError') {
       return { error: 'Request timed out' }
     }
     return { error: 'Network error' }
   }
+
+  if (response.status === 403) {
+    return { error: 'Access denied. You lack the required role.' }
+  }
+
+  if (!response.ok) {
+    const body = await response.json() as ApiResponse<unknown>
+    return { error: body.message ?? `Failed to reset password (HTTP ${response.status})` }
+  }
+
+  const body = await response.json() as ApiResponse<{ newPassword: string }>
+  if (body.status === 'ok' && body.data) {
+    return { newPassword: body.data.newPassword }
+  }
+
+  return { newPassword }
 }

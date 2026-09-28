@@ -20,7 +20,7 @@ import type {
 } from '@/api/types'
 import type { FutureApiRoute } from '@/api/apiContract'
 import { appConfig, MOCK_API_ENABLED } from '@/config/appConfig'
-import { getAuthToken } from '@/auth/AuthContext'
+import { authFetch } from './authFetch'
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms))
@@ -189,13 +189,24 @@ export async function listRooms(): Promise<{ rooms: RoomData[] }> {
   }
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const authToken = getAuthToken()
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, { method: 'GET' })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn('[listRooms] Request timed out')
+    } else {
+      console.warn('[listRooms] Network error:', err)
+    }
+    return { rooms: [] }
   }
 
-  const response = await fetch(url, { method: 'GET', headers })
+  if (response.status === 403) {
+    console.warn('[listRooms] Access denied (403).')
+    return { rooms: [] }
+  }
+
   if (!response.ok) return { rooms: [] }
   const body = (await response.json()) as { data?: { rooms?: RoomData[] } }
   return { rooms: body.data?.rooms ?? [] }
@@ -226,17 +237,32 @@ export async function createRoom(
   }
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const authToken = getAuthToken()
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ roomNumber }),
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn('[createRoom] Request timed out')
+    } else {
+      console.warn('[createRoom] Network error:', err)
+    }
+    return {
+      room: { roomNumber, qrToken: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
+      qrUrl: '',
+    }
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ roomNumber }),
-  })
+  if (response.status === 403) {
+    console.warn('[createRoom] Access denied (403).')
+    return {
+      room: { roomNumber, qrToken: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
+      qrUrl: '',
+    }
+  }
 
   const body = (await response.json()) as {
     data?: { room?: RoomData; qrUrl?: string }
@@ -266,17 +292,26 @@ export async function updateRoom(
   }
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const authToken = getAuthToken()
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, {
+      method: 'PATCH',
+      body: JSON.stringify({ active }),
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn('[updateRoom] Request timed out')
+    } else {
+      console.warn('[updateRoom] Network error:', err)
+    }
+    return { room: { roomNumber, qrToken: '', active, createdAt: Date.now(), updatedAt: Date.now() } }
   }
 
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify({ active }),
-  })
+  if (response.status === 403) {
+    console.warn('[updateRoom] Access denied (403).')
+    return { room: { roomNumber, qrToken: '', active, createdAt: Date.now(), updatedAt: Date.now() } }
+  }
 
   const body = (await response.json()) as { data?: { room?: RoomData } }
   return { room: body.data?.room ?? { roomNumber, qrToken: '', active, createdAt: Date.now(), updatedAt: Date.now() } }
@@ -299,13 +334,24 @@ export async function deleteRoom(
   }
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const authToken = getAuthToken()
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, { method: 'DELETE' })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn('[deleteRoom] Request timed out')
+    } else {
+      console.warn('[deleteRoom] Network error:', err)
+    }
+    return { success: false }
   }
 
-  const response = await fetch(url, { method: 'DELETE', headers })
+  if (response.status === 403) {
+    console.warn('[deleteRoom] Access denied (403).')
+    return { success: false }
+  }
+
   return { success: response.ok }
 }
 
@@ -333,13 +379,30 @@ export async function reissueRoomQr(
   }
 
   const url = `${appConfig.apiBaseUrl}/api/admin/rooms/${roomNumber}/reissue-qr`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const authToken = getAuthToken()
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, { method: 'PATCH' })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn('[reissueRoomQr] Request timed out')
+    } else {
+      console.warn('[reissueRoomQr] Network error:', err)
+    }
+    return {
+      room: { roomNumber, qrToken: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
+      qrUrl: '',
+    }
   }
 
-  const response = await fetch(url, { method: 'PATCH', headers })
+  if (response.status === 403) {
+    console.warn('[reissueRoomQr] Access denied (403).')
+    return {
+      room: { roomNumber, qrToken: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
+      qrUrl: '',
+    }
+  }
+
   const body = (await response.json()) as { data?: { room?: RoomData; qrUrl?: string } }
   return {
     room: body.data?.room ?? { roomNumber, qrToken: '', active: true, createdAt: Date.now(), updatedAt: Date.now() },
@@ -360,17 +423,23 @@ export async function checkoutRoom(
   }
 
   const url = `${appConfig.apiBaseUrl}/api/session/checkout`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const authToken = getAuthToken()
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ roomNumber }),
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return { ok: false, message: 'Checkout request timed out. Please try again.' }
+    }
+    return { ok: false, message: 'Unable to connect to the server. Please check your connection and try again.' }
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ roomNumber }),
-  })
+  if (response.status === 403) {
+    return { ok: false, message: 'Access denied. You lack the required role.' }
+  }
 
   const body = (await response.json()) as { message?: string }
   if (!response.ok) {
@@ -655,24 +724,21 @@ export async function listAdminOrders(
 
   const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : ''
   const url = `${appConfig.apiBaseUrl}/api/admin/orders${params}`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const staffToken = getAuthToken()
-  if (staffToken) {
-    headers['Authorization'] = `Bearer ${staffToken}`
-  }
 
   let response: Response
   try {
-    response = await fetch(url, { method: 'GET', headers })
-  } catch {
+    response = await authFetch(url, { method: 'GET' })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return { orders: [], error: 'Request timed out. Please try again.' }
+    }
     return { orders: [], error: 'Could not reach the backend service.' }
   }
 
-  if (response.status === 401 || response.status === 403) {
-    console.warn(
-      '[Admin Orders] Access denied (401/403). Insufficient role or expired session.',
-    )
-    return { orders: [], error: 'Access denied. You lack the required role or your session has expired.' }
+  // 401 is handled centrally (redirect). 403 remains a permission error.
+  if (response.status === 403) {
+    console.warn('[Admin Orders] Access denied (403). Insufficient role.')
+    return { orders: [], error: 'Access denied. You lack the required role.' }
   }
 
   if (!response.ok) {
@@ -716,47 +782,14 @@ export async function updateOrderStatus(
   }
 
   const url = `${appConfig.apiBaseUrl}/api/order/update-status`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const staffToken = getAuthToken()
-  if (staffToken) {
-    headers['Authorization'] = `Bearer ${staffToken}`
-  }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+  let response: Response
   try {
-    const response = await fetch(url, {
+    response = await authFetch(url, {
       method: 'POST',
-      headers,
       body: JSON.stringify({ orderId, status: newStatus }),
-      signal: controller.signal,
     })
-    clearTimeout(timer)
-
-    if (response.status === 401 || response.status === 403) {
-      console.warn(
-        '[Order Status] Access denied (401/403). Insufficient role or expired session.',
-      )
-      return {
-        status: 'error',
-        requestId: nextRequestId(),
-        message: 'Access denied. You lack the required role or your session has expired.',
-        code: 'AUTH_REQUIRED',
-      }
-    }
-
-    const body = await parseResponseBody(response)
-    if (isSuccessResponse(body)) return body
-    if (isErrorResponse(body)) return body
-    return {
-      status: 'error',
-      requestId: 'local-parse',
-      message: 'Unexpected response from order status update.',
-      code: 'INTERNAL_ERROR',
-    }
   } catch (err) {
-    clearTimeout(timer)
     if (err instanceof DOMException && err.name === 'AbortError') {
       return {
         status: 'error',
@@ -771,6 +804,27 @@ export async function updateOrderStatus(
       message: 'Unable to connect to the server. Please check your connection and try again.',
       code: 'AUTOMATION_FAILED',
     }
+  }
+
+  // 401 handled centrally (redirect). 403 -> permission error.
+  if (response.status === 403) {
+    console.warn('[Order Status] Access denied (403). Insufficient role.')
+    return {
+      status: 'error',
+      requestId: nextRequestId(),
+      message: 'Access denied. You lack the required role.',
+      code: 'AUTH_REQUIRED',
+    }
+  }
+
+  const body = await parseResponseBody(response)
+  if (isSuccessResponse(body)) return body
+  if (isErrorResponse(body)) return body
+  return {
+    status: 'error',
+    requestId: 'local-parse',
+    message: 'Unexpected response from order status update.',
+    code: 'INTERNAL_ERROR',
   }
 }
 

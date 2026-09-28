@@ -6,17 +6,27 @@
  * If mustChangePassword is true, redirects to password change.
  */
 
-import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, type FormEvent, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Show session‑expired message when redirected after a 401.
+  useEffect(() => {
+    const fromSearch = searchParams.get('sessionExpired')
+    const fromWindow = new URLSearchParams(window.location.search).get('sessionExpired')
+    if (fromSearch === '1' || fromWindow === '1') {
+      setError('Session expired, please sign in again.')
+    }
+  }, [searchParams])
 
   // Redirect if already authenticated
   if (isAuthenticated) {
