@@ -6,7 +6,7 @@
  */
 
 import { appConfig, MOCK_API_ENABLED } from '@/config/appConfig'
-import { getAuthToken } from '@/auth/AuthContext'
+import { authFetch } from '@/api/authFetch'
 
 export interface DashboardMetrics {
   roomServiceRevenue: number
@@ -36,13 +36,22 @@ export async function fetchDashboard(): Promise<DashboardMetrics> {
   }
 
   const url = `${appConfig.apiBaseUrl}/api/admin/dashboard`
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const token = getAuthToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
+
+  let response: Response
+  try {
+    response = await authFetch(url, { method: 'GET' })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Dashboard request timed out')
+    }
+    throw err
   }
 
-  const response = await fetch(url, { method: 'GET', headers })
+  // 401 handled centrally (redirect). 403 -> permission error.
+  if (response.status === 403) {
+    throw new Error('Access denied. You lack the required role.')
+  }
+
   if (!response.ok) {
     throw new Error('Failed to fetch dashboard metrics')
   }

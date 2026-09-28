@@ -7,6 +7,7 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react'
 import { appConfig, MOCK_API_ENABLED } from '@/config/appConfig'
+import { authFetch } from '@/api/authFetch'
 
 export type StaffRole = 'FRONT_DESK' | 'KITCHEN' | 'MANAGER' | 'OWNER'
 
@@ -187,13 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Try to call the backend logout to invalidate the token
     if (token && !MOCK_API_ENABLED) {
       try {
-        await fetch(`${appConfig.apiBaseUrl}/api/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+        await authFetch(`${appConfig.apiBaseUrl}/api/auth/logout`, { method: 'POST' })
       } catch {
         // Ignore errors - we'll clear local state regardless
       }
@@ -213,47 +208,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const url = `${appConfig.apiBaseUrl}/api/auth/change-password`
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 15_000)
 
+    let response: Response
     try {
-      const response = await fetch(url, {
+      response = await authFetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({ currentPassword, newPassword }),
-        signal: controller.signal,
       })
-
-      clearTimeout(timer)
-
-      if (!response.ok) {
-        const body = await response.json() as Record<string, unknown>
-        return { success: false, error: (body.message as string) ?? 'Password change failed' }
-      }
-
-      const body = await response.json() as Record<string, unknown>
-      if (body.status === 'ok' && body.data) {
-        const data = body.data as Record<string, unknown>
-        // Update token if server issued a new one
-        if (data.token) {
-          const newToken = data.token as string
-          sessionStorage.setItem(AUTH_TOKEN_KEY, newToken)
-          setToken(newToken)
-        }
-        return { success: true }
-      }
-
-      return { success: false, error: 'Invalid response format' }
     } catch (err) {
-      clearTimeout(timer)
       if (err instanceof DOMException && err.name === 'AbortError') {
         return { success: false, error: 'Request timed out' }
       }
       return { success: false, error: 'Network error' }
     }
+
+    if (response.status === 403) {
+      return { success: false, error: 'Access denied. You lack the required role.' }
+    }
+
+    if (!response.ok) {
+      const body = await response.json() as Record<string, unknown>
+      return { success: false, error: (body.message as string) ?? 'Password change failed' }
+    }
+
+    const body = await response.json() as Record<string, unknown>
+    if (body.status === 'ok' && body.data) {
+      const data = body.data as Record<string, unknown>
+      // Update token if server issued a new one
+      if (data.token) {
+        const newToken = data.token as string
+        sessionStorage.setItem(AUTH_TOKEN_KEY, newToken)
+        setToken(newToken)
+      }
+      return { success: true }
+    }
+
+    return { success: false, error: 'Invalid response format' }
   }, [token])
 
   const getAuthHeaders = useCallback((): Record<string, string> => {
