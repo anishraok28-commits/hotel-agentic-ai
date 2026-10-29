@@ -166,7 +166,7 @@ function route(
     return
   }
 
-  if (method === 'GET' && url === '/api/health') {
+  if ((method === 'GET' || method === 'HEAD') && url === '/api/health') {
     handleHealth(req, res, env)
     return
   }
